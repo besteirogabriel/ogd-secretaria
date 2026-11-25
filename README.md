@@ -40,3 +40,29 @@ python3 -m venv .venv
 ```
 
 No Windows use .venv\Scripts\python.exe nos dois últimos comandos. O PDF A4 retrato é gerado pelo servidor após validação de sessão. Inclui identificação, signo, análise, posições espirituais e relatos vinculados. O arquivo de calendário ICS usa horário local e contém o título e o local do compromisso.
+
+## Portal do aluno e autoagendamento
+
+Na agenda, abra **Autoagendamento → Adicionar serviço**. Informe responsável, sala, dias da semana, início, fim, duração, antecedência e janela de reserva. Datas bloqueadas e serviços pausados deixam de oferecer vagas. Um participante pode criar conta em /agendar, confirmar um horário e consultar, remarcar ou cancelar suas reservas futuras. Conflitos de pessoa, responsável e sala são conferidos dentro da transação de reserva. A ficha espiritual e os relatos permanecem na secretaria.
+
+### Disponibilizar o link fora do computador
+
+O repositório contém a aplicação; o link de agendamento aponta para a instalação em execução. Para um servidor Linux com domínio próprio:
+
+1. Instale a aplicação e as dependências conforme acima. Crie a primeira conta administrativa pela origem local antes de liberar o domínio.
+2. Aponte o DNS do domínio para o servidor e disponibilize 80/443 para seu proxy HTTPS. Mantenha o processo Python em 127.0.0.1:8765.
+3. Inicie o processo com a origem pública exata. Substitua o domínio de exemplo pelo domínio real:
+
+```bash
+OGD_PUBLIC_ORIGIN=https://agenda.seudominio.com.br .venv/bin/python iniciar.py --sem-navegador
+```
+
+4. Em Caddy no mesmo servidor, use este bloco substituindo o domínio:
+
+```caddyfile
+agenda.seudominio.com.br {
+    reverse_proxy 127.0.0.1:8765
+}
+```
+
+O proxy deve preservar o cabeçalho Host original. A criação do primeiro administrador pela origem pública é bloqueada. O cookie de sessão servido pelo domínio HTTPS recebe Secure. A agenda exibe o endereço configurado com /agendar. No modo local, o painel identifica o endereço como restrito ao computador.

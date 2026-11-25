@@ -100,7 +100,7 @@ function matchingEvents(){
  (!q||[e.title,e.room,person(e.pid)?.nome,e.owner].some(s=>s?.toLocaleLowerCase().includes(q)))).sort((a,b)=>(a.day+a.start).localeCompare(b.day+b.start));
 }
 function detail(e){
- form.innerHTML='<h2>'+esc(e.title)+'</h2><p>'+[br(e.day),e.start+' – '+e.end,e.status,e.owner,e.room,person(e.pid)?.nome].filter(Boolean).map(esc).join(' · ')+'</p>'+(e.note?'<p>'+esc(e.note)+'</p>':'')+
+ form.innerHTML='<h2>'+esc(e.title)+'</h2><p>'+[br(e.day),e.start+' – '+e.end,e.status,e.source==='Portal'?'Autoagendamento':'',e.owner,e.room,person(e.pid)?.nome].filter(Boolean).map(esc).join(' · ')+'</p>'+(e.note?'<p>'+esc(e.note)+'</p>':'')+
  '<div class="row">'+btn('Editar / reagendar',()=>eventForm(e),'primary')+
  (e.pid?btn('Abrir ficha',()=>{dlg.close();openPerson(person(e.pid))})+btn(e.note?'Editar relato':'Registrar relato',()=>note(e)):'')+
  btn('Agendar retorno',()=>eventForm(null,e.pid,{...Object.fromEntries(['title','owner','room','start','end'].map(k=>[k,e[k]||''])),day:offsetDate(e.day,7),status:'Agendado'}))+
@@ -138,7 +138,7 @@ function calendarBody(){
    const ends=[],placed=group.map(e=>{let lane=ends.findIndex(end=>end<=minutes(e.start));if(lane<0)lane=ends.length;ends[lane]=minutes(e.end);return {e,lane}});
    for(const {e,lane} of placed){
     const title=[e.start+' – '+e.end,e.title,person(e.pid)?.nome,e.owner,e.status].filter(Boolean).join(' · ');
-    blocks.push('<button class="booking '+(e.status==='Cancelado'?'cancelled':e.status==='Realizado'?'done':'')+'" title="'+esc(title)+'" style="top:'+((minutes(e.start)-lo*60)/60*68)+'px;height:'+Math.max(15,(minutes(e.end)-minutes(e.start))/60*68-2)+'px;left:'+lane/ends.length*100+'%;width:calc('+100/ends.length+'% - 2px)" data-action="'+action(()=>detail(e))+'"><time>'+esc(e.start)+'</time><b>'+esc(e.title)+'</b><small>'+esc(person(e.pid)?.nome||e.owner)+'</small></button>');
+    blocks.push('<button class="booking '+(e.source==='Portal'?'online ':'')+(e.status==='Cancelado'?'cancelled':e.status==='Realizado'?'done':'')+'" title="'+esc(title)+'" style="top:'+((minutes(e.start)-lo*60)/60*68)+'px;height:'+Math.max(15,(minutes(e.end)-minutes(e.start))/60*68-2)+'px;left:'+lane/ends.length*100+'%;width:calc('+100/ends.length+'% - 2px)" data-action="'+action(()=>detail(e))+'"><time>'+esc(e.start)+'</time><b>'+esc(e.title)+'</b><small>'+esc(person(e.pid)?.nome||e.owner)+'</small></button>');
    }group=[];
   }
   for(const e of daily){if(minutes(e.start)>=groupEnd){draw();groupEnd=-1}group.push(e);groupEnd=Math.max(groupEnd,minutes(e.end))}draw();
@@ -149,7 +149,7 @@ function calendarBody(){
 function agenda(){
  const shift=n=>{const d=new Date(selected+'T12:00:00');selected=agendaMode==='Mês'?date(new Date(d.getFullYear(),d.getMonth()+n,1)):offsetDate(selected,n*(agendaMode==='Semana'?7:1));render()};
  const select=(key,label,options)=>'<label>'+label+'<select id="filter-'+key+'"><option value="">Todos</option>'+options.map(v=>'<option '+(v===calendarFilters[key]?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></label>';
- return '<div class="row"><h1>Agenda</h1>'+btn('Novo compromisso',()=>eventForm(),'primary')+'</div><div class="agenda-tools"><div class="row">'+btn('Anterior',()=>shift(-1))+btn('Hoje',()=>{selected=today();render()})+btn('Próximo',()=>shift(1))+'<label>Ir para data<input type="date" id="jump-day" value="'+selected+'"></label></div><div class="tabs">'+['Dia','Semana','Mês'].map(t=>btn(t,()=>{agendaMode=t;render()},t===agendaMode?'active':'')).join('')+'</div></div><div class="agenda-filters"><label>Buscar compromisso<input id="filter-query" type="search" value="'+esc(calendarFilters.query)+'" placeholder="Nome, atividade ou sala"></label>'+select('owner','Responsável',[...new Set(db.agenda.map(e=>e.owner))].sort())+select('status','Situação',['Agendado','Confirmado','Realizado','Faltou','Cancelado'])+'</div><div id="planner-body">'+calendarBody()+'</div>';
+ return '<div class="row"><h1>Agenda</h1>'+btn('Autoagendamento',publishPanel)+btn('Novo compromisso',()=>eventForm(),'primary')+'</div><div class="agenda-tools"><div class="row">'+btn('Anterior',()=>shift(-1))+btn('Hoje',()=>{selected=today();render()})+btn('Próximo',()=>shift(1))+'<label>Ir para data<input type="date" id="jump-day" value="'+selected+'"></label></div><div class="tabs">'+['Dia','Semana','Mês'].map(t=>btn(t,()=>{agendaMode=t;render()},t===agendaMode?'active':'')).join('')+'</div></div><div class="agenda-filters"><label>Buscar compromisso<input id="filter-query" type="search" value="'+esc(calendarFilters.query)+'" placeholder="Nome, atividade ou sala"></label>'+select('owner','Responsável',[...new Set(db.agenda.map(e=>e.owner))].sort())+select('status','Situação',['Agendado','Confirmado','Realizado','Faltou','Cancelado'])+'</div><div id="planner-body">'+calendarBody()+'</div>';
 }
 function wireAgenda(){
  const refresh=()=>{$('planner-body').innerHTML=calendarBody()};
@@ -188,7 +188,21 @@ function home(){
  const scheduled=db.agenda.filter(e=>e.day===today()).sort((a,b)=>a.start.localeCompare(b.start));
  const drafts=db.pessoas.filter(p=>p.analysis?.status!=='Concluída');
  const pending=db.agenda.filter(e=>e.pid&&e.status==='Realizado'&&!e.note).sort((a,b)=>b.day.localeCompare(a.day));
- return '<div class="row"><h1>Recepção</h1>'+btn('Agendar atendimento',()=>eventForm(),'primary')+'</div><div class="metrics">'+metric('Compromissos de hoje',scheduled.filter(e=>e.status!=='Cancelado').length)+metric('Análises em rascunho',drafts.length)+metric('Atendimentos sem relato',pending.length)+'</div><div class="workgrid"><section><div class="row"><h2>Agenda de hoje</h2>'+btn('Abrir agenda',()=>go('Agenda'))+'</div>'+events(scheduled)+'</section><section><div class="row"><h2>Acompanhamento</h2></div><h3>Análises a concluir</h3>'+drafts.slice(0,8).map(p=>'<div class="row item"><strong>'+esc(p.nome)+'</strong>'+btn('Abrir análise',()=>openPerson(p))+'</div>').join('')+(!drafts.length?'<p class="muted">Nenhuma análise pendente.</p>':'')+'<h3>Relatos pendentes</h3>'+pending.slice(0,8).map(e=>'<div class="row item"><strong>'+esc(person(e.pid)?.nome)+'</strong>'+btn('Registrar relato',()=>note(e))+'</div>').join('')+(!pending.length?'<p class="muted">Nenhum relato pendente.</p>':'')+'</section></div>';
+ return '<div class="row"><h1>Recepção</h1>'+btn('Agendar atendimento',()=>eventForm(),'primary')+'</div><div class="metrics">'+metric('Compromissos de hoje',scheduled.filter(e=>e.status!=='Cancelado').length)+metric('Análises em rascunho',drafts.length)+metric('Atendimentos sem relato',pending.length)+'</div><div class="workgrid"><section><div class="row"><h2>Agenda de hoje</h2>'+btn('Abrir agenda',()=>go('Agenda'))+'</div>'+receptionTimeline(scheduled)+'</section><section><div class="row"><h2>Acompanhamento</h2></div><h3>Análises a concluir</h3>'+drafts.slice(0,8).map(p=>'<div class="row item"><strong>'+esc(p.nome)+'</strong>'+btn('Abrir análise',()=>openPerson(p))+'</div>').join('')+(!drafts.length?'<p class="muted">Nenhuma análise pendente.</p>':'')+'<h3>Relatos pendentes</h3>'+pending.slice(0,8).map(e=>'<div class="row item"><strong>'+esc(person(e.pid)?.nome)+'</strong>'+btn('Registrar relato',()=>note(e))+'</div>').join('')+(!pending.length?'<p class="muted">Nenhum relato pendente.</p>':'')+'</section></div>';
+}
+function receptionTimeline(entries){
+ if(!entries.length)return '<div class="reception-empty"><h3>Dia sem compromissos</h3><p>Os atendimentos agendados e as reservas do portal aparecem aqui.</p>'+btn('Consultar disponibilidade',publishPanel)+'</div>';
+ return entries.map(e=>'<div class="visit-row"><div class="visit-time">'+esc(e.start)+'<small>'+esc(e.end)+'</small></div><div class="visit-content"><strong>'+esc(person(e.pid)?.nome||e.title)+'</strong><small>'+esc([e.pid?e.title:'',e.owner,e.room].filter(Boolean).join(' · '))+'</small><span class="visit-status">'+esc(e.status)+(e.source==='Portal'?' · Portal':'')+'</span></div>'+btn('Abrir',()=>detail(e))+'</div>').join('');
+}
+const navShapes={
+ 'Recepção':'M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9',
+ 'Agenda':'M3 6h18v15H3zM7 3v6m10-6v6M3 11h18m-14 4h4',
+ 'Cadastros':'M4 4h16v16H4zM8 9h8m-8 5h5',
+ 'Financeiro':'M3 6h18v13H3zM3 10h18m-7 5h4',
+ 'Equipe':'M4 20v-2a4 4 0 0 1 8 0v2m1-13a3 3 0 1 1 6 0a3 3 0 1 1-6 0M5 8a3 3 0 1 1 6 0a3 3 0 1 1-6 0m11 6a4 4 0 0 1 5 4v2'
+};
+function navItem(t){
+ return '<button data-action="'+action(()=>go(t))+'" class="'+(tab===t?'active':'')+'" '+(tab===t?'aria-current="page"':'')+'><svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="'+navShapes[t]+'"/></svg>'+esc(t)+'</button>';
 }
 function clearSession(){
  me=null;db=null;team=[];audit=[];actions=[];personId='';form.replaceChildren();dlg.close();main.replaceChildren();$('workspace').hidden=true;$('identity').replaceChildren();$('notice').classList.remove('show');
@@ -196,17 +210,20 @@ function clearSession(){
 function accessScreen(setup){
  const container=$('access');container.hidden=false;
  container.innerHTML='<div class="access-brand"><img src="/marca.svg" alt="Templo Espírita Ogum Quebra Demanda"><div>Secretaria do templo</div></div><div class="access-form"><form><h1>'+(setup?'Primeiro acesso':'Entrar na secretaria')+'</h1><p class="muted">'+(setup?'Crie a conta de administração do templo.':'Use sua conta de acesso ao templo.')+'</p>'+(setup?'<label>Nome completo<input name="name" autocomplete="name" maxlength="120" required></label>':'')+'<label>E-mail<input name="email" type="email" autocomplete="username" required></label><label>Senha<input name="password" type="password" autocomplete="'+(setup?'new-password':'current-password')+'" '+(setup?'minlength="12" placeholder="Ao menos 12 caracteres"':'')+' required></label><p role="alert" class="error"></p><button class="primary">'+(setup?'Criar conta administrativa':'Entrar')+'</button></form></div>';
+ if(!setup)container.querySelector('form').insertAdjacentHTML('beforeend','<a href="/agendar" class="portal-link">Área do aluno · Cadastro e agendamentos</a>');
  const f=container.querySelector('form');f.onsubmit=async e=>{e.preventDefault();const button=f.querySelector('button');button.disabled=true;try{await api(setup?'/setup':'/login',Object.fromEntries(new FormData(f)));await boot()}catch(err){f.querySelector('.error').textContent=err.message}finally{button.disabled=false}};
 }
 async function boot(){
  const session=await api('/session');
  if(!session.user){accessScreen(session.setup);return}
+ if(session.user.role==='Participante'){location.replace('/agendar');return}
  me=session.user;tab=me.role==='Financeiro'?'Financeiro':'Recepção';$('access').replaceChildren();$('access').hidden=true;$('workspace').hidden=false;
  $('currentDate').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
  await load();
 }
 async function go(next){
- try{if(next==='Equipe'){[team,audit]=await Promise.all([api('/equipe'),api('/atividade')])}
+ try{if(next==='Agenda'||next==='Recepção'){db=(await api('/dados')).data}
+ if(next==='Equipe'){[team,audit]=await Promise.all([api('/equipe'),api('/atividade')])}
  tab=next;personId='';render()}catch(err){alert(err.message)}
 }
 async function userAction(body){
@@ -219,7 +236,7 @@ function staff(){
 function render(){
  if(!me||!db)return;
  actions=[];const menus=me.role==='Financeiro'?['Financeiro']:['Recepção','Agenda','Cadastros',...(me.role==='Administrador'?['Financeiro','Equipe']:[])];
- $('nav').innerHTML=menus.map(t=>btn(t,()=>go(t),t===tab?'active':'')).join('');
+ $('nav').innerHTML=menus.map(navItem).join('');
  $('identity').innerHTML='<strong>'+esc(me.name)+'</strong><small>'+esc(me.role)+'</small>'+btn('Alterar senha',()=>modal('Alterar senha',[req('atual','Senha atual','password'),req('nova','Nova senha (mínimo 12 caracteres)','password')],{},async values=>{try{await api('/senha',values);dlg.close();notify('Senha atualizada.')}catch(err){alert(err.message)}}))+btn('Sair',async()=>{try{await api('/logout',{});clearSession();await boot()}catch(e){alert(e.message)}});
  main.innerHTML=tab==='Recepção'?home():tab==='Agenda'?agenda():tab==='Financeiro'?finance():tab==='Equipe'?staff():personId?profile(person(personId)):listPeople();
  if(tab==='Cadastros'&&personId)installProfileTabs();
@@ -227,3 +244,15 @@ function render(){
  if($('busca'))$('busca').oninput=e=>document.querySelectorAll('.ficha').forEach(el=>el.hidden=!el.querySelector('strong').textContent.toLocaleLowerCase().includes(e.target.value.toLocaleLowerCase()));
 }
 boot().catch(err=>{$('access').textContent='Não foi possível abrir a secretaria. '+err.message});
+
+// Reservations made in the portal appear without interrupting an open form or a filter.
+let syncing=false;
+setInterval(async()=>{
+ if(syncing||!me||!db||busy||dlg.open||document.hidden||!['Agenda','Recepção'].includes(tab)||['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName))return;
+ syncing=true;
+ try{
+  const before=db,screen=tab, fresh=(await api('/dados')).data;
+  if(me&&before===db&&tab===screen&&!busy&&!dlg.open&&JSON.stringify(db)!==JSON.stringify(fresh)){db=fresh;render()}
+ }catch{ /* Keep the current view during a transient connection failure. */ }
+ finally{syncing=false}
+},30000);

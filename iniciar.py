@@ -16,6 +16,7 @@ from datetime import date, time as clock
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import reservas
 from signos import signo
 from urllib.parse import urlsplit, unquote
 
@@ -28,6 +29,10 @@ FILES = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 
          '/marca.svg': ('Grenze_vermelho/Assinatura_horizontal.svg', 'image/svg+xml'),
          '/alegreya.ttf': ('Grenze_vermelho/Fontes/Alegreya.ttf', 'font/ttf')}
 ORIGIN = 'http://127.0.0.1:8765'
+PUBLIC = os.environ.get('OGD_PUBLIC_ORIGIN','').rstrip('/')
+if PUBLIC and (urlsplit(PUBLIC).scheme!='https' or not urlsplit(PUBLIC).hostname or urlsplit(PUBLIC).path or urlsplit(PUBLIC).query or urlsplit(PUBLIC).fragment or urlsplit(PUBLIC).username):
+    raise ValueError('OGD_PUBLIC_ORIGIN deve ser uma origem HTTPS sem caminho.')
+FILES.update({'/agendar':('portal.html','text/html; charset=utf-8'),'/portal.js':('portal.js','text/javascript'),'/portal.css':('portal.css','text/css'),'/publicacao.js':('publicacao.js','text/javascript')})
 
 
 class Problem(Exception):
@@ -57,6 +62,10 @@ def initialize():
             'CREATE TABLE IF NOT EXISTS records (kind TEXT, id TEXT, body TEXT, PRIMARY KEY(kind,id))',
             'CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, ts INTEGER, uid INTEGER, action TEXT, target TEXT)',
             'CREATE TABLE IF NOT EXISTS attempts (ts INTEGER)',
+            'CREATE TABLE IF NOT EXISTS portal_people (uid INTEGER PRIMARY KEY, pid TEXT UNIQUE NOT NULL)',
+            'CREATE TABLE IF NOT EXISTS throttle (key TEXT, ts INTEGER)',
+            'CREATE INDEX IF NOT EXISTS throttle_key ON throttle(key,ts)',
+            'CREATE TABLE IF NOT EXISTS book_rules (id TEXT PRIMARY KEY, body TEXT NOT NULL)',
             'CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)',
         ):
             con.execute(sql)
@@ -70,6 +79,14 @@ def initialize():
                         for item in data[kind]:
                             con.execute('INSERT INTO records VALUES (?,?,?)', (kind,item['id'],json.dumps(item)))
             con.execute("INSERT INTO settings VALUES ('migration','1')")
+
+
+def throttle(con, key, limit, window):
+    now=int(time.time())
+    con.execute('DELETE FROM throttle WHERE ts<?',(now-3600,))
+    count=con.execute('SELECT count(*) FROM throttle WHERE key=? AND ts>?',(key,now-window)).fetchone()[0]
+    require(count<limit,'Muitas tentativas. Aguarde alguns minutos.',429)
+    con.execute('INSERT INTO throttle VALUES (?,?)',(key,now))
 
 
 def hash_password(password, salt=None):
@@ -146,14 +163,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def dispatch(self,post=False):
         try:
-            require(self.headers.get('Host')==ORIGIN.split('//')[1],'Host inválido.',403)
+            host=self.headers.get('Host')
+            public_request=bool(PUBLIC and host==urlsplit(PUBLIC).netloc)
+            expected=PUBLIC if public_request else ORIGIN
+            require(host==urlsplit(expected).netloc,'Host inválido.',403)
             path=urlsplit(self.path).path
+            if public_request and path=='/setup':
+                raise Problem(403,'Inicialize o administrador no servidor local.')
             if not post and path in FILES:
                 file,mime=FILES[path]
                 return self.respond(200,(ROOT/file).read_bytes(),mime)
             body={}
             if post:
-                require(self.headers.get('Origin')==ORIGIN,'Origem inválida.',403)
+                require(self.headers.get('Origin')==expected,'Origem inválida.',403)
                 require(self.headers.get_content_type()=='application/json','Formato inválido.',415)
                 length=int(self.headers.get('Content-Length',0))
                 require(0<length<=512000,'Requisição inválida.',413)
@@ -167,7 +189,7 @@ class Handler(BaseHTTPRequestHandler):
                 user=con.execute('SELECT u.id,name,email,role FROM users u JOIN sessions s ON uid=u.id WHERE token=? AND expires>? AND active=1',(key,int(time.time()))).fetchone()
                 if path.startswith('/ficha-pdf/') and not post:
                     require(user,'Entre para acessar a ficha.',401)
-                    require('pessoas' in ROLES[user['role']],'Acesso restrito.',403)
+                    require('pessoas' in ROLES.get(user['role'],()),'Acesso restrito.',403)
                     pid=unquote(path[len('/ficha-pdf/'):])
                     row=con.execute("SELECT body FROM records WHERE kind='pessoas' AND id=?",(pid,)).fetchone()
                     require(row,'Ficha inexistente.',404)
@@ -179,7 +201,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise Problem(503,'Instale as dependências do PDF conforme o README.')
                     return self.respond(200,generate(person,events,signo(person.get('nasc'))),'application/pdf')
                 result,cookie=self.route(con,path,post,body,user,key)
-            self.respond(200,result,cookie=cookie)
+            self.respond(200,result,cookie=cookie+'; Secure' if public_request and cookie else cookie)
         except Problem as exc:
             self.respond(exc.status,{'error':str(exc)})
         except sqlite3.IntegrityError:
@@ -192,20 +214,31 @@ class Handler(BaseHTTPRequestHandler):
         exists=con.execute('SELECT 1 FROM users LIMIT 1').fetchone()
         if path=='/session' and not post:
             return {'setup':not exists,'user':dict(user) if user else None},None
-        if post and path in ('/setup','/login'):
-            if path=='/setup':
+        if path=='/horarios' and not post:
+            link=con.execute('SELECT pid FROM portal_people WHERE uid=?',(user['id'],)).fetchone() if user else None
+            return {'slots':reservas.slots(con,pid=link[0] if link else None)},None
+        if post and path in ('/setup','/login','/inscricao'):
+            if path=='/inscricao':
+                require(exists,'A secretaria ainda não abriu os cadastros.',409)
+                throttle(con,'signup:'+self.client_address[0],30,3600)
+                name,email,pwd=account(b)
+                person=reservas.new_person(name,email,b,require)
+                uid=con.execute("INSERT INTO users(name,email,password,role) VALUES (?,?,?,'Participante')",(name,email,pwd)).lastrowid
+                con.execute('INSERT INTO portal_people VALUES (?,?)',(uid,person['id']))
+                con.execute("INSERT INTO records VALUES ('pessoas',?,?)",(person['id'],json.dumps(person)))
+            elif path=='/setup':
                 require(not exists,'A instalação já possui administrador.',409)
                 name,email,pwd=account(b)
                 uid=con.execute("INSERT INTO users(name,email,password,role) VALUES (?,?,?,'Administrador')",(name,email,pwd)).lastrowid
             else:
-                con.execute('DELETE FROM attempts WHERE ts<?',(now-300,))
-                require(con.execute('SELECT count(*) FROM attempts').fetchone()[0]<10,'Aguarde cinco minutos antes de tentar novamente.',429)
+                email_key='login:'+str(b.get('email','')).strip().lower()[:254]
+                throttle(con,email_key,10,300)
                 row=con.execute('SELECT * FROM users WHERE email=? AND active=1',(str(b.get('email','')).strip().lower(),)).fetchone()
                 if not row or not check_password(b.get('password'),row['password']):
-                    con.execute('INSERT INTO attempts VALUES (?)',(now,))
                     con.commit()
                     raise Problem(401,'E-mail ou senha inválidos.')
                 uid=row['id']
+                con.execute('DELETE FROM throttle WHERE key=?',(email_key,))
             token=secrets.token_urlsafe(32)
             con.execute('DELETE FROM sessions WHERE expires<=?',(now,))
             con.execute('INSERT INTO sessions VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),uid,now+28800))
@@ -225,6 +258,21 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/logout' and post:
             con.execute('DELETE FROM sessions WHERE token=?',(key,))
             return {},'ogd=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
+        if path in ('/minhas-reservas','/reservar'):
+            require(role=='Participante','Use uma conta de aluno ou cliente.',403)
+            pid=con.execute('SELECT pid FROM portal_people WHERE uid=?',(uid,)).fetchone()[0]
+            if path=='/minhas-reservas' and not post:
+                return reservas.own(con,pid),None
+            require(path=='/reservar' and post,'Operação inválida.')
+            item=reservas.book(con,pid,b,require,validate)
+            con.execute('INSERT INTO audit(ts,uid,action,target) VALUES (?,?,?,?)',(now,uid,'Reserva · '+item['status'],item['id']))
+            return item,None
+        require(role in ROLES,'Acesso exclusivo da secretaria.',403)
+        if path=='/publicacao':
+            require(role in ('Administrador','Atendimento'),'Acesso restrito.',403)
+            if post:
+                reservas.configure(con,b,require)
+            return {'rules':reservas.rules(con),'url':(PUBLIC or ORIGIN)+'/agendar','external':bool(PUBLIC)},None
         if path=='/dados' and not post:
             data={k:[] for k in KINDS}
             for row in con.execute('SELECT kind,body FROM records ORDER BY rowid'):
@@ -248,7 +296,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path in ('/equipe','/atividade','/usuario'):
             require(role=='Administrador','Acesso restrito.',403)
             if path=='/equipe' and not post:
-                return [dict(r) for r in con.execute('SELECT id,name,email,role,active FROM users ORDER BY name')],None
+                return [dict(r) for r in con.execute("SELECT id,name,email,role,active FROM users WHERE role<>'Participante' ORDER BY name")],None
             if path=='/atividade' and not post:
                 return [dict(r) for r in con.execute('SELECT ts,name,action,target FROM audit JOIN users ON users.id=uid ORDER BY audit.id DESC LIMIT 100')],None
             require(path=='/usuario' and post,'Recurso inexistente.',404)
