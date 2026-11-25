@@ -1,0 +1,6 @@
+Gestão do Templo Espírita Ogum Quebra Demanda
+Extraia toda a pasta. Na pasta extraída execute python3 iniciar.py (Windows: py iniciar.py). Requer Python 3.8 ou superior, sem pacotes adicionais. Mantenha o terminal aberto enquanto usa o sistema. Para encerrar pressione Ctrl+C.
+O navegador abre http://127.0.0.1:8765. O acesso é local e individual. Os registros ficam no arquivo templo.sqlite3 ao lado do iniciador. Para fazer uma cópia de segurança, encerre o programa e copie esse arquivo para um local protegido. Para restaurar, com o programa encerrado, coloque a cópia na mesma pasta.
+
+Atualização de instalação existente
+Encerre a versão anterior. Faça uma cópia de templo.sqlite3 e extraia esta versão na pasta da instalação existente, substituindo os arquivos do programa. O pacote não contém banco de dados. A assinatura horizontal oficial e as fontes acompanham o aplicativo para funcionamento sem internet.
