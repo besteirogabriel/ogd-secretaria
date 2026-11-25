@@ -1,13 +1,14 @@
 'use strict';
 const $=id=>document.getElementById(id), main=$('main'), dlg=$('dlg'), form=$('form');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const uid=()=>crypto.randomUUID(), date=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'), today=()=>date(new Date()), br=s=>s?s.split('-').reverse().join('/'):'', money=n=>(n/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const brazilDate=new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'});
+const uid=()=>crypto.randomUUID(), date=d=>[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-'), today=()=>brazilDate.format(new Date()), br=s=>s?s.split('-').reverse().join('/'):'', money=n=>(n/100).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
 const positions=[['Cabeça',228,326],['Corpo',228,383],['Caminhos',148,324],['Adjuntó',312,323],['Caboclo',99,172],['Preto Velho',350,175],['Marinheiro',177,195],['Sereia',274,201],['Criança',69,292],['1º Exu',126,410],['2º Exu',366,416],['Ciganos',185,442],['Egun',268,442]];
 let db,version,tab='Agenda',personId='',selected=today(), actions=[],busy=false;
 function action(fn){return actions.push(fn)-1}
 function btn(label,fn,cls=''){return '<button type="button" class="'+cls+'" data-action="'+action(fn)+'">'+esc(label)+'</button>'}
 document.addEventListener('click',e=>{const b=e.target.closest('[data-action]');if(b&&!busy)actions[+b.dataset.action]?.()});
-let me=null, team=[], audit=[], financeFilter='Em aberto', agendaMode='Semana';
+let me=null, team=[], audit=[], financeFilter='Em aberto', agendaMode=matchMedia('(max-width: 760px)').matches?'Lista':'Semana';
 const labels={pessoas:'Cadastros',agenda:'Agenda',contas:'Financeiro'};
 async function api(path,body){
  const options=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
@@ -33,11 +34,40 @@ async function save(change,after){
      }
    }
    db=next;dlg.close();after?.();render();notify('Registro salvo.');
- }catch(error){if(error.status===409){dlg.close();await load()}alert(error.message)}
+ }catch(error){if(error.status===409&&error.message.startsWith('Registro alterado')){dlg.close();await load();notify(error.message)}else formError(error.message)}
  finally{busy=false}
 }
 function field(name,label,type='text',options='',required=false){return {name,label,type,options,required}}
-function modal(title,fields,values,submit){form.innerHTML='<h2>'+esc(title)+'</h2>'+fields.map(f=>{const v=values[f.name]??'',a=' name="'+f.name+'" '+(f.required?'required':'');let el;if(f.type==='select')el='<select'+a+'>'+f.options.map(o=>{const [id,label]=Array.isArray(o)?o:[o,o];return '<option value="'+esc(id)+'" '+(v===id?'selected':'')+'>'+esc(label)+'</option>'}).join('')+'</select>';else if(f.type==='area')el='<textarea'+a+'>'+esc(v)+'</textarea>';else el='<input type="'+f.type+'"'+a+' value="'+esc(v)+'" '+(f.type==='number'?'min=".01" step=".01"':'')+'>';return '<label>'+esc(f.label)+el+'</label>'}).join('')+'<div class="row"><button class="primary">Salvar</button>'+btn('Cancelar',()=>dlg.close())+'</div>';form.onsubmit=e=>{e.preventDefault();const values=Object.fromEntries(new FormData(form));for(const k in values)values[k]=values[k].trim();if(fields.some(f=>f.required&&!values[f.name]))return alert('Preencha os campos obrigatórios.');submit(values)};if(!dlg.open)dlg.showModal()}
+function formError(message){
+ const error=form.querySelector('[data-form-error]');
+ if(error)error.textContent=message;
+ else alert(message);
+}
+function modal(title,fields,values,submit){
+ const controls=fields.map(f=>{
+   const value=values[f.name]??'',attr=' name="'+f.name+'" '+(f.required?'required':'');
+   let tag;
+   if(f.type==='select'){
+     tag='<select'+attr+'>'+f.options.map(option=>{
+       const [id,label]=Array.isArray(option)?option:[option,option];
+       return '<option value="'+esc(id)+'" '+(value===id?'selected':'')+'>'+esc(label)+'</option>';
+     }).join('')+'</select>';
+   }else if(f.type==='area')tag='<textarea'+attr+'>'+esc(value)+'</textarea>';
+   else tag='<input type="'+f.type+'"'+attr+' value="'+esc(value)+'" '+(f.type==='number'?'min=".01" step=".01"':'')+'>';
+   return '<label class="form-field '+(['date','time'].includes(f.type)?'compact':'')+'">'+esc(f.label)+tag+'</label>';
+ }).join('');
+ form.innerHTML='<div class="detail-head"><h2>'+esc(title)+'</h2>'+btn('Fechar',()=>dlg.close(),'subtle')+'</div><div class="form-layout">'+controls+'</div><p class="error" data-form-error role="alert"></p><div class="row detail-actions"><button class="primary">Salvar</button>'+btn('Cancelar',()=>dlg.close())+'</div>';
+ form.onsubmit=e=>{
+   e.preventDefault();
+   formError('');
+   const values=Object.fromEntries(new FormData(form));
+   for(const k in values)values[k]=fields.find(f=>f.name===k)?.type==='password'?values[k]:values[k].trim();
+   if(fields.some(f=>f.required&&!values[f.name]))return formError('Preencha os campos obrigatórios.');
+   submit(values);
+ };
+ if(!dlg.open)dlg.showModal();
+}
+dlg.addEventListener('close',()=>dlg.classList.remove('drawer'));
 const person=(id,data=db)=>data.pessoas.find(p=>p.id===id);
 const req=(k,l,t='text')=>field(k,l,t,'',true);
 function editPerson(p){modal(p?'Editar cadastro':'Novo cadastro',[req('nome','Nome completo'),field('tipo','Vínculo','select',['Aluno','Cliente','Aluno e cliente']),field('nasc','Nascimento','date'),field('tel','Telefone','tel'),field('email','E-mail','email'),field('end','Endereço')],p||{},v=>{const id=p?.id||uid();save(d=>{if(p)Object.assign(person(id,d),v);else d.pessoas.push({...v,id,analysis:{data:today(),status:'Rascunho'},intro:'Durante as aulas práticas e teóricas, esta foi a configuração espiritual observada.',map:positions.map(([label])=>({label,nome:'',obs:''}))})},()=>{tab='Cadastros';personId=id;fichaPane=0})})
@@ -54,8 +84,41 @@ function profile(p){const a=p.analysis;const entry=(label,value)=>value?'<p><b>'
 return btn('Voltar aos cadastros',()=>{personId='';render()})+'<div class="row"><h1>'+esc(p.nome)+'</h1>'+btn('Editar cadastro',()=>editPerson(p))+btn('Baixar ficha PDF',()=>downloadFicha(p),'primary')+'</div><p>'+[p.tipo,p.tel,p.email,br(p.nasc),signoSolar(p.nasc),p.end].filter(Boolean).map(esc).join(' · ')+'</p>'+caseNotes(p)+'<section><div class="row"><h2>Análise inicial</h2>'+btn('Editar análise',()=>analysis(p))+'</div><small>'+br(a.data)+' · '+esc(a.status)+'</small>'+entry('Responsável',a.autor)+entry('Motivo da procura',a.motivo)+entry('Histórico',a.historico)+entry('Expectativas',a.objetivos)+entry('Observações',a.obs)+entry('Acompanhamento',a.plano)+'</section><section><div class="row"><h2>Configuração espiritual</h2>'+btn('Editar descrição',()=>modal('Descrição da configuração',[field('intro','Texto','area')],p,v=>save(d=>person(p.id,d).intro=v.intro)))+'</div><p>'+esc(p.intro)+'</p><div class="split"><div class="map"><img src="/mapa.png" alt="Diagrama de referência da configuração espiritual">'+positions.map(([label,x,y],i)=>'<button title="'+esc(p.map[i].label)+'" aria-label="'+esc(p.map[i].label)+'" style="left:'+x/454*100+'%;top:'+(y-130)/401*100+'%" data-action="'+action(()=>slot(p,i))+'">'+(p.map[i].nome||p.map[i].label!==label?'<span>'+esc(p.map[i].label)+'<br><b>'+esc(p.map[i].nome)+'</b></span>':'')+'</button>').join('')+'</div><div class="positions">'+p.map.map((s,i)=>'<div class="item"><div class="row"><strong>'+esc(s.label)+'</strong>'+btn('Editar',()=>slot(p,i))+'</div>'+[s.nome,s.obs].filter(Boolean).map(x=>'<p>'+esc(x)+'</p>').join('')+'</div>').join('')+btn('Adicionar posição',()=>slot(p,p.map.length))+'</div></div></section><section><div class="row"><h2>Histórico de atendimentos</h2>'+btn('Agendar',()=>eventForm(null,p.id))+'</div>'+events(db.agenda.filter(e=>e.pid===p.id).sort((a,b)=>b.day.localeCompare(a.day)||b.start.localeCompare(a.start)))+'</section>'}
 function events(list){return list.length?list.map(e=>'<div class="item"><div class="row"><strong>'+esc(e.start)+' – '+esc(e.end)+' · '+esc(e.title)+'</strong>'+btn('Editar',()=>eventForm(e))+(e.pid?btn(e.note?'Editar relato':'Registrar relato',()=>note(e)):'')+'</div><small>'+br(e.day)+' · '+esc(person(e.pid)?.nome||'Atividade do templo')+' · '+esc(e.status)+' · '+esc(e.owner)+'</small>'+(e.note?'<p>'+esc(e.note)+'</p>':'')+'</div>').join(''):'<p class="muted">Nenhum atendimento neste período.</p>'}
 function note(e){modal('Relato do atendimento',[req('owner','Responsável'),req('note','Relato, orientações e acompanhamento','area')],e,v=>save(d=>Object.assign(d.agenda.find(x=>x.id===e.id),v,{status:'Realizado'})))}
-function eventForm(e,pid='',defaults={}){modal(e?'Editar compromisso':'Novo compromisso',[req('title','Atividade ou atendimento'),field('pid','Aluno ou cliente','select',[['','Atividade geral do templo'],...db.pessoas.map(p=>[p.id,p.nome])]),req('day','Data','date'),req('start','Início','time'),req('end','Término','time'),req('owner','Responsável'),field('room','Sala ou local'),field('status','Situação','select',['Agendado','Confirmado','Realizado','Faltou','Cancelado'])],e||{day:selected,start:'09:00',end:'10:00',owner:me.name,pid,...defaults},v=>{if(v.start>=v.end)return alert('O término deve ser posterior ao início.');if(e?.note&&v.pid!==e.pid)return alert('O relato já está vinculado a esta pessoa.');if(v.status!=='Cancelado'&&db.agenda.some(x=>x.id!==e?.id&&x.status!=='Cancelado'&&x.day===v.day&&x.end>v.start&&x.start<v.end&&(x.owner.toLowerCase()===v.owner.toLowerCase()||v.pid&&v.pid===x.pid)))return alert('Já existe compromisso nesse horário para a pessoa ou o responsável.');save(d=>e?Object.assign(d.agenda.find(x=>x.id===e.id),v):d.agenda.push({...v,id:uid()}),()=>selected=v.day)})}
-const calendarFilters={owner:'',status:'',query:''};
+function eventForm(event,pid='',defaults={}){
+ const people=db.pessoas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
+ const initial=event?{...event,...defaults}:{day:selected,start:'09:00',end:'10:00',owner:me.name,pid,...defaults};
+ modal(event?'Editar compromisso':'Novo compromisso',[
+   req('title','Atendimento ou atividade'),
+   field('pid','Participante','select',[['','Atividade interna'],...people.map(p=>[p.id,p.nome])]),
+   req('day','Data','date'),req('start','Início','time'),req('end','Término','time'),
+   req('owner','Responsável'),field('room','Sala ou local'),
+   field('status','Situação','select',calendarStatuses)
+ ],initial,values=>{
+   if(values.start>=values.end){formError('O horário de término precisa ser posterior ao início.');return}
+   if(event?.note&&values.pid!==event.pid){formError('O participante está vinculado ao relato deste atendimento.');return}
+   const item={...event,...values,id:event?.id||uid()};
+   if(event&&(item.day!==event.day||item.start!==event.start))delete item.arrived_at;
+   save(data=>{
+     if(event)data.agenda[data.agenda.findIndex(entry=>entry.id===event.id)]=item;
+     else data.agenda.push(item);
+   },()=>{selected=values.day;lastCalendarId=item.id});
+ });
+ const startInput=form.elements.start,endInput=form.elements.end;
+ let duration=minutes(initial.end)-minutes(initial.start);
+ endInput.addEventListener('change',()=>{duration=minutes(endInput.value)-minutes(startInput.value)});
+ startInput.addEventListener('change',()=>{
+   const end=minutes(startInput.value)+duration;
+   if(duration>0&&end<1440)endInput.value=clockText(end);
+ });
+}
+const calendarStatuses=['Agendado','Confirmado','Realizado','Faltou','Cancelado'];
+const calendarFilters={owner:'',room:'',status:'',source:'',query:''};
+const normalize=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
+const statusTone=status=>({Confirmado:'green',Realizado:'blue',Faltou:'amber',Cancelado:'neutral'}[status]||'red');
+function statusTag(status){return '<span class="status-tag '+statusTone(status)+'">'+esc(status)+'</span>'}
+function eventOrigin(event){return event.source==='Portal'?'Portal':'Secretaria'}
+function dateLabel(day,options){return new Date(day+'T12:00:00').toLocaleDateString('pt-BR',options)}
+
 function signoSolar(value){
  if(!value)return '';
  const [,m,d]=value.split('-').map(Number);
@@ -95,18 +158,38 @@ const clockText=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).pad
 const minutes=t=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
 function offsetDate(key,n){const d=new Date(key+'T12:00:00');d.setDate(d.getDate()+n);return date(d)}
 function matchingEvents(){
- const q=calendarFilters.query.trim().toLocaleLowerCase();
- return db.agenda.filter(e=>(!calendarFilters.owner||e.owner===calendarFilters.owner)&&(!calendarFilters.status||e.status===calendarFilters.status)&&
- (!q||[e.title,e.room,person(e.pid)?.nome,e.owner].some(s=>s?.toLocaleLowerCase().includes(q)))).sort((a,b)=>(a.day+a.start).localeCompare(b.day+b.start));
+ const q=normalize(calendarFilters.query.trim());
+ return db.agenda.filter(e=>
+   (!calendarFilters.owner||e.owner===calendarFilters.owner)&&
+   (!calendarFilters.room||e.room===calendarFilters.room)&&
+   (calendarFilters.status?e.status===calendarFilters.status:e.status!=='Cancelado')&&
+   (!calendarFilters.source||eventOrigin(e)===calendarFilters.source)&&
+   (!q||[e.title,e.room,person(e.pid)?.nome,e.owner].some(value=>normalize(value).includes(q)))
+ ).sort((a,b)=>(a.day+a.start).localeCompare(b.day+b.start));
 }
+let lastCalendarId='';
 function detail(e){
- form.innerHTML='<h2>'+esc(e.title)+'</h2><p>'+[br(e.day),e.start+' – '+e.end,e.status,e.source==='Portal'?'Autoagendamento':'',e.owner,e.room,person(e.pid)?.nome].filter(Boolean).map(esc).join(' · ')+'</p>'+(e.note?'<p>'+esc(e.note)+'</p>':'')+
- '<div class="row">'+btn('Editar / reagendar',()=>eventForm(e),'primary')+
- (e.pid?btn('Abrir ficha',()=>{dlg.close();openPerson(person(e.pid))})+btn(e.note?'Editar relato':'Registrar relato',()=>note(e)):'')+
- btn('Agendar retorno',()=>eventForm(null,e.pid,{...Object.fromEntries(['title','owner','room','start','end'].map(k=>[k,e[k]||''])),day:offsetDate(e.day,7),status:'Agendado'}))+
- (e.status==='Agendado'?btn('Confirmar presença',()=>save(d=>d.agenda.find(x=>x.id===e.id).status='Confirmado')):'')+
- btn('Exportar calendário (.ics)',()=>exportICS(e))+btn('Fechar',()=>dlg.close())+'</div>';
- form.onsubmit=ev=>ev.preventDefault();if(!dlg.open)dlg.showModal();
+ const active=['Agendado','Confirmado'].includes(e.status);
+ const p=person(e.pid);
+ const details=(label,value)=>'<div><dt>'+label+'</dt><dd>'+esc(value||'—')+'</dd></div>';
+ const statusUpdate=status=>save(d=>{d.agenda.find(item=>item.id===e.id).status=status});
+ const primary=active&&!e.arrived_at&&e.day<=today()?btn('Registrar chegada',()=>save(d=>{
+   d.agenda.find(item=>item.id===e.id).arrived_at=new Date().toISOString();
+ }),'primary'):(p&&active?btn('Registrar atendimento',()=>note(e),'primary'):'');
+ form.innerHTML='<div class="detail-head"><div>'+statusTag(e.status)+' <span class="muted">'+esc(eventOrigin(e))+'</span><h2>'+esc(e.title)+'</h2><p>'+esc(dateLabel(e.day,{weekday:'long',day:'numeric',month:'long'}))+' · '+esc(e.start)+'–'+esc(e.end)+'</p></div>'+btn('Fechar',()=>dlg.close(),'subtle')+'</div><p class="error" data-form-error role="alert"></p>'+
+ '<dl class="detail-grid">'+details('Participante',p?.nome||'Atividade interna')+details('Responsável',e.owner)+details('Sala ou local',e.room)+details('Chegada',e.arrived_at?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(e.arrived_at)):'')+'</dl>'+
+ (e.note?'<div class="detail-note"><h3>Relato do atendimento</h3><p>'+esc(e.note)+'</p></div>':'')+
+ '<div class="row detail-actions">'+primary+
+ btn(active?'Editar ou reagendar':'Editar compromisso',()=>eventForm(e))+
+ (p?btn('Abrir ficha',()=>{dlg.close();openPerson(p)}):'')+
+ (p&&(e.note||e.status==='Realizado')?btn(e.note?'Editar relato':'Adicionar relato',()=>note(e)):'')+
+ (active&&e.status==='Agendado'?btn('Confirmar agendamento',()=>statusUpdate('Confirmado')):'')+
+ btn('Agendar retorno',()=>eventForm(null,e.pid,{...Object.fromEntries(['title','owner','room','start','end'].map(key=>[key,e[key]||''])),day:offsetDate(e.day,7)}))+
+ btn('Exportar .ics',()=>exportICS(e))+
+ (active&&e.day<=today()?btn('Marcar falta',()=>{if(confirm('Registrar falta neste atendimento?'))statusUpdate('Faltou')}):'')+
+ (active?btn('Cancelar compromisso',()=>{if(confirm('Cancelar o compromisso e liberar o horário?'))statusUpdate('Cancelado')},'danger'):'')+'</div>';
+ form.onsubmit=event=>event.preventDefault();
+ dlg.classList.add('drawer');if(!dlg.open)dlg.showModal();
 }
 function exportICS(e){
  const escapeCal=s=>String(s||'').replaceAll('\\','\\\\').replace(/\r\n|\r|\n/g,'\\n').replaceAll(';','\\;').replaceAll(',','\\,');
@@ -125,6 +208,7 @@ function calendarBody(){
   }
   return '<div class="monthboard">'+cells+'</div>';
  }
+ if(agendaMode==='Lista')return listAgenda(entries);
  const count=agendaMode==='Semana'?7:1,start=count===7?offsetDate(selected,-((d.getDay()+6)%7)):selected;
  const days=Array.from({length:count},(_,i)=>offsetDate(start,i));
  const visible=entries.filter(e=>days.includes(e.day));
@@ -138,29 +222,90 @@ function calendarBody(){
    const ends=[],placed=group.map(e=>{let lane=ends.findIndex(end=>end<=minutes(e.start));if(lane<0)lane=ends.length;ends[lane]=minutes(e.end);return {e,lane}});
    for(const {e,lane} of placed){
     const title=[e.start+' – '+e.end,e.title,person(e.pid)?.nome,e.owner,e.status].filter(Boolean).join(' · ');
-    blocks.push('<button class="booking '+(e.source==='Portal'?'online ':'')+(e.status==='Cancelado'?'cancelled':e.status==='Realizado'?'done':'')+'" title="'+esc(title)+'" style="top:'+((minutes(e.start)-lo*60)/60*68)+'px;height:'+Math.max(15,(minutes(e.end)-minutes(e.start))/60*68-2)+'px;left:'+lane/ends.length*100+'%;width:calc('+100/ends.length+'% - 2px)" data-action="'+action(()=>detail(e))+'"><time>'+esc(e.start)+'</time><b>'+esc(e.title)+'</b><small>'+esc(person(e.pid)?.nome||e.owner)+'</small></button>');
+    blocks.push('<button draggable="'+(['Agendado','Confirmado'].includes(e.status))+'" data-booking-id="'+esc(e.id)+'" class="booking '+statusTone(e.status)+(e.id===lastCalendarId?' booking-selected':'')+'" aria-label="'+esc(title)+'" title="'+esc(title)+'" style="top:'+((minutes(e.start)-lo*60)/60*68)+'px;height:'+Math.max(15,(minutes(e.end)-minutes(e.start))/60*68-2)+'px;left:'+lane/ends.length*100+'%;width:calc('+100/ends.length+'% - 2px)" data-action="'+action(()=>detail(e))+'"><time>'+esc(e.start)+'</time><b>'+esc(person(e.pid)?.nome||e.title)+'</b><small>'+esc(person(e.pid)?e.title:e.owner)+'</small></button>');
    }group=[];
   }
   for(const e of daily){if(minutes(e.start)>=groupEnd){draw();groupEnd=-1}group.push(e);groupEnd=Math.max(groupEnd,minutes(e.end))}draw();
-  return '<div class="daycolumn"><div class="columnhead">'+esc(new Date(day+'T12:00:00').toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit',month:'2-digit'}))+'</div><div class="hourplane">'+slots+blocks.join('')+'</div></div>';
+  return '<div class="daycolumn '+(day===today()?'column-today':'')+'"><div class="columnhead">'+esc(dateLabel(day,{weekday:'short'}))+'<b>'+day.slice(-2)+'</b>'+'</div><div class="hourplane" data-day="'+day+'">'+slots+blocks.join('')+'</div></div>';
  }).join('');
- return '<div class="planner-scroll"><div class="planner '+(count===7?'week':'')+'" style="--days:'+count+'"><div><div class="columnhead">Hora</div><div class="axis">'+axis+'</div></div>'+columns+'</div></div>';
+ return '<div class="planner-scroll"><div class="planner '+(count===7?'week':'')+'" style="--days:'+count+'"><div><div class="columnhead">BRT</div><div class="axis">'+axis+'</div></div>'+columns+'</div></div>';
+}
+function listAgenda(entries){
+ const dates=Array.from({length:7},(_,i)=>offsetDate(selected,i));
+ const sections=dates.map(day=>{
+   const items=entries.filter(entry=>entry.day===day);
+   if(!items.length)return '';
+   return '<section class="list-day"><h3>'+esc(dateLabel(day,{weekday:'long',day:'numeric',month:'long'}))+'</h3>'+receptionTimeline(items)+'</section>';
+ }).join('');
+ return sections||'<div class="empty-panel"><h3>Nenhum compromisso no período</h3><p>Escolha outra data ou ajuste os filtros.</p></div>';
 }
 function agenda(){
- const shift=n=>{const d=new Date(selected+'T12:00:00');selected=agendaMode==='Mês'?date(new Date(d.getFullYear(),d.getMonth()+n,1)):offsetDate(selected,n*(agendaMode==='Semana'?7:1));render()};
+ const period=agendaMode==='Mês'?dateLabel(selected,{month:'long',year:'numeric'}):agendaMode==='Dia'?dateLabel(selected,{weekday:'long',day:'numeric',month:'long'}):(()=>{
+   const d=new Date(selected+'T12:00:00'),first=agendaMode==='Lista'?selected:offsetDate(selected,-((d.getDay()+6)%7));
+   return br(first)+' a '+br(offsetDate(first,6));
+ })();
+ const shift=n=>{
+   const d=new Date(selected+'T12:00:00');
+   selected=agendaMode==='Mês'?date(new Date(d.getFullYear(),d.getMonth()+n,1)):offsetDate(selected,n*(agendaMode==='Dia'?1:7));
+   render();
+ };
  const select=(key,label,options)=>'<label>'+label+'<select id="filter-'+key+'"><option value="">Todos</option>'+options.map(v=>'<option '+(v===calendarFilters[key]?'selected':'')+'>'+esc(v)+'</option>').join('')+'</select></label>';
- return '<div class="row"><h1>Agenda</h1>'+btn('Autoagendamento',publishPanel)+btn('Novo compromisso',()=>eventForm(),'primary')+'</div><div class="agenda-tools"><div class="row">'+btn('Anterior',()=>shift(-1))+btn('Hoje',()=>{selected=today();render()})+btn('Próximo',()=>shift(1))+'<label>Ir para data<input type="date" id="jump-day" value="'+selected+'"></label></div><div class="tabs">'+['Dia','Semana','Mês'].map(t=>btn(t,()=>{agendaMode=t;render()},t===agendaMode?'active':'')).join('')+'</div></div><div class="agenda-filters"><label>Buscar compromisso<input id="filter-query" type="search" value="'+esc(calendarFilters.query)+'" placeholder="Nome, atividade ou sala"></label>'+select('owner','Responsável',[...new Set(db.agenda.map(e=>e.owner))].sort())+select('status','Situação',['Agendado','Confirmado','Realizado','Faltou','Cancelado'])+'</div><div id="planner-body">'+calendarBody()+'</div>';
+ const unique=k=>[...new Set(db.agenda.map(e=>e[k]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+ const modes=['Dia','Semana','Mês','Lista'].map(t=>btn(t,()=>{agendaMode=t;render()},t===agendaMode?'active':'')).join('');
+ return '<div class="page-title"><h1>Agenda</h1><div class="row">'+btn('Autoagendamento',publishPanel)+btn('+ Novo compromisso',()=>eventForm(),'primary')+'</div></div>'+
+ '<div class="calendar-shell"><div class="agenda-tools"><div class="period-nav">'+btn('‹',()=>shift(-1),'arrow')+btn('›',()=>shift(1),'arrow')+btn('Hoje',()=>{selected=today();render()})+'<h2>'+esc(period)+'</h2></div><div class="segmented">'+modes+'</div></div>'+
+ '<div class="agenda-filters"><label>Buscar<input id="filter-query" type="search" value="'+esc(calendarFilters.query)+'" placeholder="Pessoa ou atendimento"></label>'+
+ select('owner','Responsável',unique('owner'))+select('room','Sala',unique('room'))+select('source','Origem',['Portal','Secretaria'])+select('status','Situação',calendarStatuses)+
+ '<label>Ir para data<input type="date" id="jump-day" value="'+selected+'"></label>'+btn('Limpar',()=>{Object.keys(calendarFilters).forEach(k=>calendarFilters[k]='');render()},'subtle')+'</div>'+
+ '<div id="planner-body">'+calendarBody()+'</div></div>';
 }
 function wireAgenda(){
- const refresh=()=>{$('planner-body').innerHTML=calendarBody()};
- for(const key of ['owner','status','query'])$('filter-'+key).oninput=e=>{calendarFilters[key]=e.target.value;refresh()};
+ const planner=$('planner-body');
+ for(const key of Object.keys(calendarFilters)){
+   $('filter-'+key).oninput=e=>{calendarFilters[key]=e.target.value;planner.innerHTML=calendarBody()};
+ }
  $('jump-day').onchange=e=>{if(e.target.value){selected=e.target.value;render()}};
+ let dragging;
+ planner.ondragstart=event=>{
+   dragging=event.target.closest('[draggable="true"]')?.dataset.bookingId;
+   if(dragging){event.dataTransfer.setData('text/plain',dragging);event.dataTransfer.effectAllowed='move'}
+ };
+ planner.ondragend=()=>{dragging=null;planner.querySelector('.drop-target')?.classList.remove('drop-target')};
+ planner.ondragover=event=>{
+   const slot=event.target.closest('.hour-slot');
+   if(!dragging||!slot)return;
+   event.preventDefault();event.dataTransfer.dropEffect='move';
+   planner.querySelector('.drop-target')?.classList.remove('drop-target');slot.classList.add('drop-target');
+ };
+ planner.ondrop=event=>{
+   const target=event.target.closest('.hour-slot');
+   const entry=db.agenda.find(x=>x.id===dragging);
+   if(!target||!entry)return;
+   event.preventDefault();
+   const day=target.parentElement.dataset.day;
+   const start=target.textContent.slice(-5);
+   const end=minutes(start)+minutes(entry.end)-minutes(entry.start);
+   if(end>=1440){notify('Selecione um horário que termine no mesmo dia.');return}
+   eventForm(entry,entry.pid,{day,start,end:clockText(end)});
+ };
 }
 
 function listPeople(){
  const people=db.pessoas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
- const rows=people.map(p=>'<tr class="ficha"><td><strong>'+esc(p.nome)+'</strong></td><td>'+esc(p.tipo)+'</td><td>'+esc(p.tel||p.email||'—')+'</td><td>'+btn('Abrir ficha',()=>{personId=p.id;fichaPane=0;render()})+'</td></tr>').join('');
- return '<div class="row"><h1>Alunos e clientes</h1>'+btn('Novo cadastro',()=>editPerson(),'primary')+'</div><section><label>Buscar por nome<input id="busca" type="search"></label><div class="tablewrap"><table><thead><tr><th>Nome</th><th>Vínculo</th><th>Contato</th><th>Ficha</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+(!rows?'<p class="muted">Nenhuma pessoa cadastrada.</p>':'')+'</section>';
+ const rows=people.map(p=>'<tr class="ficha" data-person-search="'+esc(normalize([p.nome,p.email,p.tel].filter(Boolean).join(' ')))+'" data-type="'+esc(p.tipo)+'"><td><div class="person-cell"><span class="initials">'+esc(initials(p.nome))+'</span><div>'+btn(p.nome,()=>openPerson(p),'text-link')+'<small>'+esc(p.email||'')+'</small></div></div></td><td>'+esc(p.tipo)+'</td><td>'+esc(p.tel||'—')+'</td><td>'+statusTag(p.analysis?.status==='Concluída'?'Concluída':'Em rascunho')+'</td><td>'+btn('Abrir ficha',()=>openPerson(p))+'</td></tr>').join('');
+ return '<div class="page-title"><h1>Alunos e clientes</h1>'+btn('+ Novo cadastro',()=>editPerson(),'primary')+'</div><section class="directory"><div class="row table-controls"><label>Buscar cadastro<input id="busca" type="search" placeholder="Nome, e-mail ou telefone"></label><label>Vínculo<select id="tipo-ficha"><option value="">Todos</option><option>Aluno</option><option>Cliente</option><option>Aluno e cliente</option></select></label><span id="people-count" class="muted">'+people.length+' cadastros</span></div><div class="tablewrap"><table><thead><tr><th>Pessoa</th><th>Vínculo</th><th>Telefone</th><th>Análise inicial</th><th></th></tr></thead><tbody>'+rows+'</tbody></table></div><p class="muted" id="people-empty" '+(rows?'hidden':'')+'>Nenhum cadastro encontrado.</p></section>';
+}
+function initials(name){return String(name||'').trim().split(/\s+/).slice(0,2).map(word=>word[0]).join('').toLocaleUpperCase()}
+function wirePeople(){
+ const search=$('busca'),type=$('tipo-ficha'),rows=[...main.querySelectorAll('.ficha')];
+ const filter=()=>{
+  const term=normalize(search.value.trim());
+  for(const row of rows)row.hidden=!(row.dataset.personSearch.includes(term)&&(!type.value||row.dataset.type===type.value));
+  const count=rows.filter(row=>!row.hidden).length;
+  $('people-count').textContent=count+' '+(count===1?'cadastro':'cadastros');
+  $('people-empty').hidden=count>0;
+ };
+ search.oninput=filter;type.onchange=filter;
 }
 function installProfileTabs(){
  const sections=Array.from(main.querySelectorAll(':scope > section'));
@@ -185,14 +330,26 @@ function metric(label,value){return '<div><small>'+esc(label)+'</small><strong>'
 function notify(message){const el=$('notice');el.textContent=message;el.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.classList.remove('show'),2300)}
 function openPerson(p,pane=0){personId=p.id;fichaPane=pane;tab='Cadastros';render()}
 function home(){
- const scheduled=db.agenda.filter(e=>e.day===today()).sort((a,b)=>a.start.localeCompare(b.start));
+ const scheduled=db.agenda.filter(e=>e.day===today()&&e.status!=='Cancelado').sort((a,b)=>a.start.localeCompare(b.start));
+ const waiting=scheduled.filter(e=>e.arrived_at&&['Agendado','Confirmado'].includes(e.status));
  const drafts=db.pessoas.filter(p=>p.analysis?.status!=='Concluída');
  const pending=db.agenda.filter(e=>e.pid&&e.status==='Realizado'&&!e.note).sort((a,b)=>b.day.localeCompare(a.day));
- return '<div class="row"><h1>Recepção</h1>'+btn('Agendar atendimento',()=>eventForm(),'primary')+'</div><div class="metrics">'+metric('Compromissos de hoje',scheduled.filter(e=>e.status!=='Cancelado').length)+metric('Análises em rascunho',drafts.length)+metric('Atendimentos sem relato',pending.length)+'</div><div class="workgrid"><section><div class="row"><h2>Agenda de hoje</h2>'+btn('Abrir agenda',()=>go('Agenda'))+'</div>'+receptionTimeline(scheduled)+'</section><section><div class="row"><h2>Acompanhamento</h2></div><h3>Análises a concluir</h3>'+drafts.slice(0,8).map(p=>'<div class="row item"><strong>'+esc(p.nome)+'</strong>'+btn('Abrir análise',()=>openPerson(p))+'</div>').join('')+(!drafts.length?'<p class="muted">Nenhuma análise pendente.</p>':'')+'<h3>Relatos pendentes</h3>'+pending.slice(0,8).map(e=>'<div class="row item"><strong>'+esc(person(e.pid)?.nome)+'</strong>'+btn('Registrar relato',()=>note(e))+'</div>').join('')+(!pending.length?'<p class="muted">Nenhum relato pendente.</p>':'')+'</section></div>';
+ const todayLabel=dateLabel(today(),{weekday:'long',day:'numeric',month:'long'});
+ return '<div class="page-title"><div><h1>Recepção</h1><p class="muted date-text">'+esc(todayLabel)+'</p></div><div class="row">'+btn('Novo cadastro',()=>editPerson())+btn('+ Agendar atendimento',()=>eventForm(null,'',{day:today()}),'primary')+'</div></div>'+
+ '<div class="metrics">'+metric('Compromissos hoje',scheduled.length)+metric('Aguardando atendimento',waiting.length)+metric('Relatos a registrar',pending.length)+'</div>'+
+ '<div class="workgrid"><section><div class="row"><h2>Agenda de hoje</h2>'+btn('Abrir agenda',()=>{selected=today();go('Agenda')})+'</div>'+receptionTimeline(scheduled)+'</section>'+
+ '<section><h2>Pendências</h2><div class="queue"><div class="row"><h3>Chegadas registradas</h3><span class="status-tag green">'+waiting.length+'</span></div>'+
+ (waiting.length?receptionTimeline(waiting):'<p class="muted">Ninguém aguardando.</p>')+
+ '</div><div class="queue"><div class="row"><h3>Relatos a registrar</h3><span class="status-tag amber">'+pending.length+'</span></div>'+
+ pending.slice(0,5).map(e=>'<div class="row item"><strong>'+esc(person(e.pid)?.nome)+'</strong>'+btn('Registrar',()=>note(e))+'</div>').join('')+
+ (!pending.length?'<p class="muted">Nenhum relato pendente.</p>':'')+
+ '</div><div class="queue"><div class="row"><h3>Análises em rascunho</h3><span class="status-tag neutral">'+drafts.length+'</span></div>'+
+ drafts.slice(0,5).map(p=>'<div class="row item"><strong>'+esc(p.nome)+'</strong>'+btn('Abrir ficha',()=>openPerson(p))+'</div>').join('')+
+ (!drafts.length?'<p class="muted">Nenhuma análise pendente.</p>':'')+'</div></section></div>';
 }
 function receptionTimeline(entries){
  if(!entries.length)return '<div class="reception-empty"><h3>Dia sem compromissos</h3><p>Os atendimentos agendados e as reservas do portal aparecem aqui.</p>'+btn('Consultar disponibilidade',publishPanel)+'</div>';
- return entries.map(e=>'<div class="visit-row"><div class="visit-time">'+esc(e.start)+'<small>'+esc(e.end)+'</small></div><div class="visit-content"><strong>'+esc(person(e.pid)?.nome||e.title)+'</strong><small>'+esc([e.pid?e.title:'',e.owner,e.room].filter(Boolean).join(' · '))+'</small><span class="visit-status">'+esc(e.status)+(e.source==='Portal'?' · Portal':'')+'</span></div>'+btn('Abrir',()=>detail(e))+'</div>').join('');
+ return entries.map(e=>'<div class="visit-row"><div class="visit-time">'+esc(e.start)+'<small>'+esc(e.end)+'</small></div><div class="visit-content"><strong>'+esc(person(e.pid)?.nome||e.title)+'</strong><small>'+esc([e.pid?e.title:'',e.owner,e.room].filter(Boolean).join(' · '))+'</small><span class="visit-status">'+esc(e.arrived_at&&['Agendado','Confirmado'].includes(e.status)?'Aguardando atendimento':e.status)+(e.source==='Portal'?' · Portal':'')+'</span></div>'+btn('Abrir',()=>detail(e))+'</div>').join('');
 }
 const navShapes={
  'Recepção':'M3 10 12 3l9 7M5 9v12h5v-7h4v7h5V9',
@@ -233,15 +390,40 @@ function staff(){
  const fields=[req('name','Nome completo'),req('email','E-mail','email'),req('password','Senha inicial (12 caracteres ou mais)','password'),field('role','Perfil','select',['Atendimento','Financeiro','Administrador'])];
  return '<div class="row"><h1>Equipe e acessos</h1>'+btn('Nova conta',()=>modal('Criar conta',fields,{},userAction),'primary')+'</div><section><h2>Contas de acesso</h2><div class="tablewrap"><table><thead><tr><th>Pessoa</th><th>Perfil</th><th>Situação</th><th>Ação</th></tr></thead><tbody>'+team.map(u=>'<tr><td><strong>'+esc(u.name)+'</strong><small>'+esc(u.email)+'</small></td><td>'+esc(u.role)+'</td><td>'+(u.active?'Ativa':'Desativada')+'</td><td>'+(u.id===me.id?'Sua conta':btn(u.active?'Desativar':'Reativar',()=>{if(confirm('Alterar acesso de '+u.name+'?'))userAction({id:u.id,active:!u.active})}))+'</td></tr>').join('')+'</tbody></table></div></section><section><h2>Atividade recente</h2>'+audit.map(a=>'<div class="logline"><time>'+esc(new Date(a.ts*1000).toLocaleString('pt-BR'))+'</time><strong>'+esc(a.name)+'</strong><span>'+esc(a.action)+'</span></div>').join('')+'</section>';
 }
+function quickFind(){
+ form.innerHTML='<div class="detail-head"><h2>Buscar pessoa</h2>'+btn('Fechar',()=>dlg.close(),'subtle')+'</div><label>Nome, e-mail ou telefone<input id="quick-query" type="search" autocomplete="off" autofocus></label><div id="quick-results"></div>';
+ const input=$('quick-query'),results=$('quick-results');
+ function update(){
+   const term=normalize(input.value.trim());
+   const matches=db.pessoas.filter(p=>normalize([p.nome,p.email,p.tel].filter(Boolean).join(' ')).includes(term)).slice(0,8);
+   results.innerHTML=matches.map(p=>'<div class="row item"><strong>'+esc(p.nome)+'</strong>'+btn('Abrir ficha',()=>{dlg.close();openPerson(p)})+'</div>').join('')||'<p class="muted">Nenhuma pessoa encontrada.</p>';
+   return matches;
+ }
+ form.onsubmit=event=>{
+   event.preventDefault();
+   const first=update()[0];
+   if(first){dlg.close();openPerson(first)}
+ };
+ input.oninput=update;
+ update();
+ dlg.showModal();input.focus();
+}
+document.addEventListener('keydown',event=>{
+ if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'&&me?.role!=='Financeiro'&&db&&!dlg.open){
+   event.preventDefault();quickFind();
+ }
+});
 function render(){
  if(!me||!db)return;
  actions=[];const menus=me.role==='Financeiro'?['Financeiro']:['Recepção','Agenda','Cadastros',...(me.role==='Administrador'?['Financeiro','Equipe']:[])];
  $('nav').innerHTML=menus.map(navItem).join('');
+ $('section-label').textContent='Secretaria / '+tab;
+ $('top-tools').innerHTML=me.role==='Financeiro'?'':btn('Buscar pessoa',quickFind,'subtle');
  $('identity').innerHTML='<strong>'+esc(me.name)+'</strong><small>'+esc(me.role)+'</small>'+btn('Alterar senha',()=>modal('Alterar senha',[req('atual','Senha atual','password'),req('nova','Nova senha (mínimo 12 caracteres)','password')],{},async values=>{try{await api('/senha',values);dlg.close();notify('Senha atualizada.')}catch(err){alert(err.message)}}))+btn('Sair',async()=>{try{await api('/logout',{});clearSession();await boot()}catch(e){alert(e.message)}});
  main.innerHTML=tab==='Recepção'?home():tab==='Agenda'?agenda():tab==='Financeiro'?finance():tab==='Equipe'?staff():personId?profile(person(personId)):listPeople();
  if(tab==='Cadastros'&&personId)installProfileTabs();
  if(tab==='Agenda')wireAgenda();
- if($('busca'))$('busca').oninput=e=>document.querySelectorAll('.ficha').forEach(el=>el.hidden=!el.querySelector('strong').textContent.toLocaleLowerCase().includes(e.target.value.toLocaleLowerCase()));
+ if($('busca'))wirePeople();
 }
 boot().catch(err=>{$('access').textContent='Não foi possível abrir a secretaria. '+err.message});
 

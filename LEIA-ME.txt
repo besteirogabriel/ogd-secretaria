@@ -66,3 +66,11 @@ agenda.seudominio.com.br {
 ```
 
 O proxy deve preservar o cabeçalho Host original. A criação do primeiro administrador pela origem pública é bloqueada. O cookie de sessão servido pelo domínio HTTPS recebe Secure. A agenda exibe o endereço configurado com /agendar. No modo local, o painel identifica o endereço como restrito ao computador.
+
+## Operação da agenda
+
+As visões Dia, Semana, Mês e Lista compartilham os filtros de responsável, sala, origem e situação. Em equipes externas à rede local, a agenda usa o horário de Brasília. Na grade, arrastar um compromisso abre a edição com a nova data e o novo horário. Confira e salve para efetivar a mudança.
+
+No painel do compromisso, registre a chegada, abra a ficha, conclua o atendimento com um relato ou marque falta. A Recepção reúne quem aguarda, relatos em aberto e análises em rascunho. Use **Buscar pessoa** ou Ctrl+K (Cmd+K no Mac) para abrir uma ficha sem voltar à lista de cadastros.
+
+Em **Agenda → Autoagendamento → Visualizar portal**, a equipe pode conferir datas e horários publicados. O participante acompanha seus horários, pode exportá-los ao calendário e recebe confirmação na tela ao reservar, remarcar ou cancelar.

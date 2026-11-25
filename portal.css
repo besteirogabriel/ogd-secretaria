@@ -1,2 +1,73 @@
-.portal{background:#f8f6f0}.mast{border-top:4px solid #8f2028;background:#fffefa;border-bottom:1px solid #d6d0c4;display:flex;align-items:center;justify-content:space-between;padding:18px max(calc((100vw - 1120px)/2),5vw);gap:14px}.mast img{width:258px;max-width:54%}.mast nav{border:0;display:flex;flex-wrap:wrap;gap:6px}.portal main{max-width:1120px;padding:38px 24px 65px;margin:auto}.portal h1{font:normal clamp(35px,5vw,56px)/1.04 Alegreya,Georgia;color:#342820}.portal h2{font-size:30px}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.stages{display:flex;list-style:none;padding:0;border-bottom:1px solid #cfc7bb;margin:26px 0}.stages li{display:flex;align-items:center;gap:9px;padding:12px 24px 12px 0;margin-right:18px;color:#61594e}.stages span{border:1px solid currentColor;border-radius:50%;width:24px;height:24px;display:grid;place-items:center;font:14px system-ui}.stages .current{color:#8f2028;border-bottom:3px solid #8f2028}.stages .past span{background:#e5e0d4}.booking-layout{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(240px,.85fr);gap:26px}.booking-panel,.ticket,.login-panel{margin:0;border:1px solid #d9d1c3;border-radius:6px;background:#fffefa;padding:26px}.ticket{position:static;height:fit-content;background:#efeade;display:block;border-top:4px solid #8f2028}.ticket-title{font:25px Alegreya}.ticket dt,.review dt{font-size:12px;color:#6a6054;margin-top:16px}.ticket dd,.review dd{margin:3px 0;font-size:16px}.ticket small{display:block;padding-top:14px;border-top:1px solid #d6cdbf}.service-card{padding:18px 14px;margin-top:12px;width:100%;display:flex;justify-content:space-between;align-items:center;text-align:left;gap:12px;background:#fff;border:1px solid #d8cdbe;border-left:3px solid #8f2028}.service-card strong{font:22px Alegreya}.service-card small,.rule-row span{display:block;margin-top:4px}.service-card>span:last-child{color:#8f2028;font-size:13px}.date-strip{display:flex;overflow:auto;gap:6px;padding:16px 0 10px}.date-strip button{flex:none}.selected,.times button:hover{background:#8f2028;color:white}.times{display:grid;grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:8px}.times button{padding:12px}.review{padding:6px 18px 18px;background:#f5f2eb}.result{padding:14px 18px;background:#e7efe5;border-left:3px solid #507353}.portal form{margin:20px 0 10px}.form-pair,.form-three{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.form-three{grid-template-columns:repeat(3,minmax(0,1fr))}.login-panel{max-width:480px;margin:auto}.reservation{display:flex;gap:18px;padding:16px 0;border-top:1px solid #ddd7cc}.reservation h3{font:24px Alegreya;margin:4px 0}.reservation p{margin:4px 0 10px}.date-tile{align-self:start;display:grid;min-width:58px;text-align:center;padding:6px;background:#eee7dc;color:#7b2630}.date-tile strong{font:30px Alegreya}.reservation button{margin-right:6px}.state{font-size:12px;color:#595447}.weekday-picker{display:flex;gap:8px;flex-wrap:wrap}.weekday-picker label,.checkline{display:flex;align-items:center;gap:4px}.weekday-picker input,.checkline input{width:auto}.rule-row{padding:14px 0;border-top:1px solid #d6d0c5;display:grid;grid-template-columns:1fr auto;gap:2px 10px}.rule-row span{grid-column:1}.rule-row button{grid-column:2;grid-row:1/3}.sheet-title small,.portal-link{color:#8f2028}.local-note{font-size:13px;color:#61564c;margin:2px 0}.portal #feedback:not(:empty){position:fixed;bottom:15px;left:5vw;right:5vw;background:#432725;color:white;padding:12px 16px;z-index:10}#form-error{color:#922630}.portal fieldset,dialog fieldset{border:1px solid #d7d0c3;border-radius:4px}.agency-toolbar{display:flex;gap:8px;flex-wrap:wrap}.agenda-tools{border-top:1px solid #d6cdbf;padding-top:14px}.agenda-filters{padding:12px 16px;background:#efede6;border:1px solid #ddd7cb}.planner-scroll,.monthboard{border-radius:6px}.booking b{font-weight:650}.booking.online{border-color:#39635d;background:#deede7;color:#214e46}.desk-head{background:#fffcf6}.desk-head span{color:#563a36}@media(max-width:700px){.booking-layout{grid-template-columns:1fr}.mast{padding:12px 16px}.portal main{padding:24px 16px}.booking-panel,.ticket{padding:18px}.stages li{padding:8px 0;margin-right:12px;font-size:12px;gap:5px}.stages span{width:20px;height:20px}.form-three{grid-template-columns:1fr 1fr}.page-heading{flex-wrap:wrap}}
-#workspace aside #nav button{display:flex;align-items:center;gap:12px}#workspace aside #nav svg{flex:none}.reception-empty{padding:24px 10px;border-top:1px solid var(--line);margin-top:16px}.reception-empty h3{font:23px Alegreya;margin:0}.visit-row{display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--line)}.visit-time{border-right:2px solid #c4a090;font-variant-numeric:tabular-nums;font-weight:bold}.visit-time small,.visit-content small{display:block;color:#6a6055;font-weight:normal}.visit-content strong{font-size:16px}.visit-status{display:inline-block;font-size:12px;color:#635647;background:#eee8dd;border-radius:3px;padding:2px 7px;margin-top:5px}.desk .metrics{border:1px solid #d9d0c2;border-radius:6px;overflow:hidden}.desk .workgrid>section{border-radius:5px}.desk #nav .active{box-shadow:inset 2px 0 0 #8f2028}.desk-head time{font-variant-numeric:tabular-nums}@media(max-width:700px){#workspace aside #nav button{gap:4px}#workspace aside #nav svg{width:15px}.visit-row{gap:8px}}
+.portal {
+  min-height: 100dvh; color: #2d2422;
+  background: linear-gradient(180deg,#eee7dd 0,#f6f3ec 290px);
+}
+.mast {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 16px max(calc((100vw - 1080px)/2),5vw);
+  border-top: 4px solid var(--accent); border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.mast img { width: min(260px,46vw); display: block; }
+.mast nav { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.portal main { max-width: 1128px; padding: 36px 24px 58px; }
+.portal h1 { font-size: clamp(36px,6vw,57px); }
+.page-heading { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 18px; }
+.page-heading p { margin-top: 6px; color: var(--muted); }
+.stages { display: flex; padding: 0; margin: 0 0 22px; gap: 5px; list-style: none; }
+.stages li { display: flex; align-items: center; gap: 7px; color: var(--muted); padding: 5px 14px 5px 0; }
+.stages span { display: grid; place-items: center; min-width: 24px; height: 24px; border: 1px solid #b8aa9d; border-radius: 50%; font-size: 12px; }
+.stages .current { color: var(--accent-strong); font-weight: 650; }
+.stages .current span { color: white; background: var(--accent); border-color: var(--accent); }
+.stages .past button { min-height: 0; padding: 0; color: var(--accent); border: 0; background: transparent; text-decoration: underline; text-underline-offset: 3px; }
+.booking-layout { display: grid; grid-template-columns: minmax(0,1.8fr) minmax(230px,1fr); gap: 20px; align-items: start; }
+.booking-panel, .ticket, .login-panel { margin: 0; padding: 23px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.booking-panel h2 { margin: 0 0 4px; }
+.booking-panel h3 { margin: 16px 0 8px; }
+.ticket { padding: 0; overflow: hidden; }
+.ticket-title { padding: 13px 18px; background: var(--side); color: #fff8f2; font: 22px Alegreya,Georgia,serif; }
+.ticket dl { padding: 5px 18px 15px; }
+.ticket dt, .review dt { margin-top: 10px; color: var(--muted); font-size: 12px; }
+.ticket dd, .review dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.ticket > small { display: block; border-top: 1px solid var(--line); padding: 11px 18px; }
+.service-card { display: flex; width: 100%; padding: 15px; margin-top: 10px; justify-content: space-between; gap: 8px; text-align: left; }
+.service-card strong { display: block; font: 600 23px/1.15 Alegreya,Georgia,serif; overflow-wrap: anywhere; }
+.service-card small { display: block; margin-top: 3px; color: var(--muted); }
+.service-card .availability { color: #315747; font-weight: 650; }
+.service-card > span:last-child { flex: none; color: var(--accent); font-weight: 650; font-size: 13px; }
+.date-strip { display: flex; gap: 7px; padding: 12px 2px 8px; overflow-x: auto; }
+.date-strip button { display: grid; gap: 0; min-width: 70px; flex-shrink: 0; padding: 6px 10px; }
+.date-strip button strong { font-size: 19px; }
+.date-strip button span { font-size: 11px; }
+.date-strip .selected { border-color: var(--accent); color: var(--accent-strong); background: #f4e4e4; }
+.times { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit,minmax(100px,1fr)); }
+.times button { min-height: 43px; font-variant-numeric: tabular-nums; }
+.review { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 6px 12px; margin: 13px 0; padding: 10px 13px; border: 1px solid var(--line); background: #f9f6ee; border-radius: 6px; }
+.review dd { font-weight: 600; }
+.portal form:not([method=dialog]) { margin: 14px 0 10px; }
+.login-panel { max-width: 495px; margin: 0 auto; }
+.login-panel .tabs { margin-top: 20px; }
+.result { padding: 13px 16px; border: 1px solid #bed2be; border-left: 4px solid #45755e; border-radius: 5px; background: #e6f0e7; margin-bottom: 16px; }
+.result strong { display: block; }
+.reservation { display: grid; grid-template-columns: 65px minmax(0,1fr); gap: 14px; padding: 16px 0; border-top: 1px solid var(--line); }
+.reservation h3 { font: 600 23px Alegreya,Georgia,serif; margin: 3px 0; }
+.reservation p { color: var(--muted); margin: 3px 0 9px; }
+.date-tile { align-self: start; display: grid; text-align: center; padding: 6px; border: 1px solid #e5d8c9; border-radius: 6px; background: #f4ece3; color: var(--accent); }
+.date-tile strong { font: 600 30px/1 Alegreya,Georgia,serif; }
+.reservation button { margin: 0 5px 5px 0; }
+.preview-banner { padding: 12px 15px; margin-bottom: 14px; background: #f3ecd9; border: 1px solid #dfd2b4; border-radius: 6px; }
+#feedback:not(:empty) { position: fixed; bottom: 17px; left: 5vw; right: 5vw; max-width: 620px; margin: auto; padding: 12px 16px; z-index: 10; border-radius: 5px; background: #6e2630; color: white; }
+.confirmation-buttons { display: flex; flex-wrap: wrap; justify-content: end; gap: 8px; }
+#cancel-summary { margin: 14px 0; }
+@media (max-width: 700px) {
+  .mast { padding: 10px 13px; }
+  .mast nav button { padding-inline: 8px; font-size: 12px; }
+  .portal main { padding: 22px 13px 35px; }
+  .booking-layout { grid-template-columns: 1fr; gap: 13px; }
+  .booking-panel, .login-panel { padding: 16px; }
+  .stages { gap: 0; margin-bottom: 14px; }
+  .stages li { padding-right: 8px; gap: 3px; font-size: 11px; }
+  .stages span { min-width: 18px; height: 18px; font-size: 10px; }
+  .service-card > span:last-child { font-size: 12px; }
+}
+.booking-layout.no-summary { grid-template-columns: minmax(0,760px); }

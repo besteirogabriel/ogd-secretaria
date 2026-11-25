@@ -12,13 +12,13 @@ import threading
 import time
 import webbrowser
 from contextlib import closing
-from datetime import date, time as clock
+from datetime import date, datetime, time as clock
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import reservas
 from signos import signo
-from urllib.parse import urlsplit, unquote
+from urllib.parse import parse_qs, urlsplit, unquote
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('OGD_DATA', ROOT / 'dados')).resolve()
@@ -141,11 +141,22 @@ def validate(con,kind,item,previous):
         require(pid==previous.get('pid'),'O atendimento já possui relato vinculado.')
     if item.get('note'):
         require(pid,'Selecione a pessoa para registrar o relato.')
+    if item.get('arrived_at'):
+        datetime.fromisoformat(item['arrived_at'].replace('Z','+00:00'))
+    room=str(item.get('room') or '').strip().casefold()
     if item['status']!='Cancelado':
         for row in con.execute("SELECT body FROM records WHERE kind='agenda' AND id<>?", (item['id'],)):
             other=json.loads(row[0])
-            if other['day']==day and other['status']!='Cancelado' and (other['owner'].strip().casefold()==owner or pid and other['pid']==pid):
-                require(not (clock.fromisoformat(other['start'])<end and clock.fromisoformat(other['end'])>start),'Conflito de horário.',409)
+            if other['day']!=day or other['status']=='Cancelado':
+                continue
+            if clock.fromisoformat(other['start'])>=end or clock.fromisoformat(other['end'])<=start:
+                continue
+            conflict = (
+                ('responsável' if other['owner'].strip().casefold()==owner else '') or
+                ('participante' if pid and other['pid']==pid else '') or
+                ('sala' if room and str(other.get('room') or '').strip().casefold()==room else '')
+            )
+            require(not conflict,'Conflito de horário para: '+conflict+'.',409)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -216,7 +227,10 @@ class Handler(BaseHTTPRequestHandler):
             return {'setup':not exists,'user':dict(user) if user else None},None
         if path=='/horarios' and not post:
             link=con.execute('SELECT pid FROM portal_people WHERE uid=?',(user['id'],)).fetchone() if user else None
-            return {'slots':reservas.slots(con,pid=link[0] if link else None)},None
+            pid=link[0] if link else None
+            requested=parse_qs(urlsplit(self.path).query).get('reserva',[''])[0]
+            allowed=reservas.reschedulable(con,requested,pid) if pid and requested else None
+            return {'slots':reservas.slots(con,pid=pid,ignore_id=allowed['id'] if allowed else None)},None
         if post and path in ('/setup','/login','/inscricao'):
             if path=='/inscricao':
                 require(exists,'A secretaria ainda não abriu os cadastros.',409)
@@ -271,7 +285,9 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/publicacao':
             require(role in ('Administrador','Atendimento'),'Acesso restrito.',403)
             if post:
-                reservas.configure(con,b,require)
+                rule=reservas.configure(con,b,require)
+                con.execute('INSERT INTO audit(ts,uid,action,target) VALUES (?,?,?,?)',
+                            (now,uid,'Disponibilidade · '+('Publicada' if rule['active'] else 'Pausada'),rule['id']))
             return {'rules':reservas.rules(con),'url':(PUBLIC or ORIGIN)+'/agendar','external':bool(PUBLIC)},None
         if path=='/dados' and not post:
             data={k:[] for k in KINDS}

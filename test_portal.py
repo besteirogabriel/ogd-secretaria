@@ -4,7 +4,6 @@ from http.client import HTTPConnection
 import json
 from unittest import TestCase
 import iniciar as app
-import reservas
 import test_secretaria
 
 
@@ -45,11 +44,19 @@ class PortalTest(TestCase):
         h.cookie=cookies[1-winner]
         h.request('/reservar',dict(id=event['id'],cancel=True),404)
         self.assertEqual(h.request('/minhas-reservas'),[])
+        self.assertNotIn(slots[0],h.request('/horarios?reserva='+event['id'])['slots'])
         h.cookie=cookies[winner]
+        self.assertIn(slots[0],h.request('/horarios?reserva='+event['id'])['slots'])
         self.assertEqual(h.request('/minhas-reservas')[0]['id'],event['id'])
         self.assertNotIn('note',h.request('/minhas-reservas')[0])
         new=h.request('/horarios')['slots'][0]
         h.request('/reservar',{**new,'id':event['id']})
+        h.cookie=admin
+        occupied=next(e for e in h.request('/dados')['data']['agenda'] if e['id']==event['id'])
+        collision=dict(occupied,id='manual',pid='',owner='Outra profissional',source='Secretaria')
+        response=h.request('/registro',dict(kind='agenda',item=collision,previous=None),409)
+        self.assertIn('sala',response['error'])
+        h.cookie=cookies[winner]
         h.request('/reservar',dict(id=event['id'],cancel=True))
         self.assertIn(new,h.request('/horarios')['slots'])
         h.cookie=admin

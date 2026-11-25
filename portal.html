@@ -1,1 +1,27 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agendamentos · Ogum Quebra Demanda</title><link rel="stylesheet" href="/interface.css"><link rel="stylesheet" href="/portal.css"></head><body class="portal"><header class="mast"><img src="/marca.svg" alt="Templo Espírita Ogum Quebra Demanda"><nav id="account"></nav></header><main id="portal"><p>Carregando horários…</p></main><div id="feedback" role="status"></div><script src="/portal.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agendamentos · Ogum Quebra Demanda</title>
+  <link rel="stylesheet" href="/interface.css">
+  <link rel="stylesheet" href="/portal.css">
+</head>
+<body class="portal">
+  <header class="mast">
+    <a href="/agendar"><img src="/marca.svg" alt="Templo Espírita Ogum Quebra Demanda"></a>
+    <nav id="account" aria-label="Conta do participante"></nav>
+  </header>
+  <main id="portal" aria-live="polite"><p>Carregando horários…</p></main>
+  <div id="feedback" role="alert"></div>
+  <dialog id="cancel-dialog" aria-labelledby="cancel-title">
+    <div class="detail-head"><h2 id="cancel-title">Cancelar atendimento?</h2></div>
+    <p id="cancel-summary"></p>
+    <form method="dialog" class="confirmation-buttons">
+      <button value="keep">Manter reserva</button>
+      <button class="primary" value="cancel">Confirmar cancelamento</button>
+    </form>
+  </dialog>
+  <script src="/portal.js"></script>
+</body>
+</html>

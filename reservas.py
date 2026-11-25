@@ -24,11 +24,11 @@ def rules(con):
     return [json.loads(r[0]) for r in con.execute('SELECT body FROM book_rules ORDER BY rowid')]
 
 
-def slots(con, now=None, pid=None):
+def slots(con, now=None, pid=None, ignore_id=None):
     now=now or current()
     events_by_day={}
     for event in schedules(con):
-        if event['status']!='Cancelado':
+        if event['status']!='Cancelado' and event['id']!=ignore_id:
             events_by_day.setdefault(event['day'],[]).append(event)
     available=[]
     for rule in rules(con):
@@ -49,7 +49,7 @@ def slots(con, now=None, pid=None):
                          (e['owner'].strip().casefold()==rule['owner'].casefold() or
                           (rule['room'] and str(e.get('room') or '').strip().casefold()==rule['room'].casefold()) or
                           (pid and e.get('pid')==pid)) for e in events_by_day.get(daykey,()))
-                if start>=now+timedelta(hours=rule['notice']) and not busy:
+                if start>now and start>=now+timedelta(hours=rule['notice']) and not busy:
                     available.append(dict(rule=rule['id'],title=rule['title'],owner=rule['owner'],room=rule['room'],day=daykey,start=a,end=b))
                 start=end
     return sorted(available,key=lambda s:(s['day'],s['start'],s['title']))
@@ -91,24 +91,35 @@ def configure(con,b,require):
 
 
 def own(con,pid):
-    return [{k:e.get(k,'') for k in ('id','title','owner','day','start','end','status','room','source')}
+    return [{k:e.get(k,'') for k in ('id','title','owner','day','start','end','status','room','source','arrived_at')}
             for e in schedules(con) if e.get('pid')==pid]
+
+
+def reschedulable(con, event_id, pid):
+    row=con.execute("SELECT body FROM records WHERE kind='agenda' AND id=?", (event_id,)).fetchone()
+    event=json.loads(row[0]) if row else {}
+    if event.get('pid')!=pid or event.get('source')!='Portal':
+        return None
+    if event['status'] not in ('Agendado','Confirmado') or event.get('arrived_at'):
+        return None
+    if datetime.fromisoformat(event['day']+'T'+event['start'])<=current():
+        return None
+    return event
 
 
 def book(con,pid,b,require,validate):
     previous=None
     if b.get('id'):
-        row=con.execute("SELECT body FROM records WHERE kind='agenda' AND id=?",(b['id'],)).fetchone()
-        previous=json.loads(row[0]) if row else {}
-        require(previous.get('pid')==pid and previous.get('source')=='Portal','Reserva não encontrada.',404)
-        require(previous['status'] in ('Agendado','Confirmado') and previous['day']+'T'+previous['start']>current().isoformat(timespec='minutes'),'Reserva encerrada.',409)
+        previous=reschedulable(con,b['id'],pid)
+        require(previous,'Reserva indisponível para alteração.',404)
     if b.get('cancel'):
         require(previous,'Selecione a reserva.')
         item=dict(previous,status='Cancelado')
     else:
-        slot=next((s for s in slots(con,pid=pid) if all(s[k]==b.get(k) for k in ('rule','day','start'))),None)
+        slot=next((s for s in slots(con,pid=pid,ignore_id=previous['id'] if previous else None) if all(s[k]==b.get(k) for k in ('rule','day','start'))),None)
         require(slot,'O horário não está mais disponível. Selecione outro.',409)
         item=dict(previous or {},**slot)
+        item.pop('arrived_at',None)
         item.update(id=previous['id'] if previous else secrets.token_hex(16),pid=pid,status='Confirmado',source='Portal')
         validate(con,'agenda',item,previous)
     con.execute("INSERT OR REPLACE INTO records VALUES ('agenda',?,?)",(item['id'],json.dumps(item)))
