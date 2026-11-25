@@ -17,7 +17,12 @@ const tone=status=>({Confirmado:'green',Realizado:'blue',Faltou:'amber',Cancelad
 
 let user,slots=[],mine=[],view='schedule',step=1,service='',day='',choice=null;
 let changeId='',authMode='login',authValues={},confirmation=null,busy=false;
-let historyOpen=false;
+let historyOpen=false, bills=[];
+const currency=amount=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(amount/100);
+function bookingPrice(slot){
+  if(slot.free)return 'Gratuito';
+  return slot.fee>0?currency(slot.fee):'A confirmar pela secretaria';
+}
 
 async function request(path,body){
   const options=body===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)};
@@ -32,9 +37,10 @@ async function request(path,body){
 }
 async function reload(){
   user=(await request('/session')).user;
-  [slots,mine]=await Promise.all([
+  [slots,mine,bills]=await Promise.all([
     request('/horarios'+(changeId?'?reserva='+encodeURIComponent(changeId):'')).then(data=>data.slots),
-    attendee()?request('/minhas-reservas'):Promise.resolve([])
+    attendee()?request('/minhas-reservas'):Promise.resolve([]),
+    attendee()?request('/minhas-cobrancas'):Promise.resolve([])
   ]);
 }
 function reset(){
@@ -52,6 +58,7 @@ function summary(){
   const current=mine.find(entry=>entry.id===changeId);
   const dateTime=choice?dayName(choice.day)+' · '+choice.start+'–'+choice.end:'Escolha um horário';
   return '<aside class="ticket"><h2 class="ticket-title">Resumo da reserva</h2><dl><dt>Atendimento</dt><dd>'+esc(s.title)+'</dd><dt>Responsável</dt><dd>'+esc(s.owner)+'</dd><dt>Local</dt><dd>'+esc(s.room||'Templo')+'</dd><dt>'+ (current?'Novo horário':'Data e horário')+'</dt><dd>'+esc(dateTime)+'</dd>'+
+   '<dt>Valor previsto</dt><dd>'+esc(bookingPrice(s))+'</dd>'+
    (current?'<dt>Horário atual</dt><dd>'+esc(dayName(current.day)+' · '+current.start)+'</dd>':'')+'</dl><small>Horários de Brasília</small></aside>';
 }
 function stages(){
@@ -68,11 +75,12 @@ function services(){
   return '<h2>Escolha o atendimento</h2>'+[...firstByService.values()].map(s=>{
     const [startH,startM]=s.start.split(':').map(Number),[endH,endM]=s.end.split(':').map(Number);
     const duration=(endH-startH)*60+endM-startM;
-    return '<button class="service-card" data-action="service" data-value="'+esc(s.rule)+'"><span><strong>'+esc(s.title)+'</strong><small>'+esc(s.owner)+' · '+esc(s.room||'Templo')+' · '+duration+' min</small><small class="availability">Próxima vaga em '+esc(when(s.day,{day:'2-digit',month:'short'}))+' às '+esc(s.start)+'</small></span><span>Escolher ›</span></button>';
+    return '<button class="service-card" data-action="service" data-value="'+esc(s.rule)+'"><span><strong>'+esc(s.title)+'</strong><small>'+esc(s.owner)+' · '+esc(s.room||'Templo')+' · '+duration+' min</small><small>'+esc(bookingPrice(s))+'</small><small class="availability">Próxima vaga em '+esc(when(s.day,{day:'2-digit',month:'short'}))+' às '+esc(s.start)+'</small></span><span>Escolher ›</span></button>';
   }).join('');
 }
 function times(){
-  const choices=slots.filter(slot=>slot.rule===service);
+  const current=mine.find(entry=>entry.id===changeId);
+  const choices=slots.filter(slot=>slot.rule===service&&(!current||reservationDate(slot)!==reservationDate(current)));
   const dates=[...new Set(choices.map(slot=>slot.day))];
   if(!dates.includes(day))day=dates[0]||'';
   if(!day)return '<h2>Horários preenchidos</h2><p>Escolha outro atendimento ou atualize as vagas.</p>'+button('Ver atendimentos','back1');
@@ -91,7 +99,7 @@ function confirmStep(){
   if(preview())return '<h2>Confirmação do participante</h2><p>Entre com uma conta de aluno ou cliente para concluir a reserva.</p>';
   if(!attendee())return '<h2>Entre para reservar</h2>'+credentials();
   const pair=(label,value)=>'<div><dt>'+label+'</dt><dd>'+esc(value)+'</dd></div>';
-  return '<h2>Confira o agendamento</h2><dl class="review">'+pair('Participante',user.name)+pair('Atendimento',choice.title)+pair('Data',dayName(choice.day))+pair('Horário',choice.start+' – '+choice.end)+pair('Responsável',choice.owner)+pair('Local',choice.room||'Templo')+'</dl>'+
+  return '<h2>Confira o agendamento</h2><dl class="review">'+pair('Participante',user.name)+pair('Atendimento',choice.title)+pair('Data',dayName(choice.day))+pair('Horário',choice.start+' – '+choice.end)+pair('Responsável',choice.owner)+pair('Local',choice.room||'Templo')+pair('Valor previsto',bookingPrice(choice))+'</dl>'+
    '<div class="row">'+button(changeId?'Confirmar remarcação':'Confirmar reserva','book','','primary')+button('Alterar horário','back2')+'</div>';
 }
 function myBookings(){
@@ -109,11 +117,21 @@ function myBookings(){
   return '<div class="page-heading"><h1>Meus agendamentos</h1>'+button('Agendar atendimento','new','','primary')+'</div><section><h2>Próximos atendimentos</h2>'+ (rows(sorted.filter(upcoming))||'<p class="muted">Nenhum atendimento agendado.</p>')+'</section>'+
    (past.length?'<section><div class="row"><h2>Histórico</h2>'+button(historyOpen?'Ocultar histórico':'Mostrar histórico ('+past.length+')','history')+'</div>'+(historyOpen?rows(past):'')+'</section>':'');
 }
+function myBills(){
+  const labels={open:'Em aberto',partial:'Pagamento parcial',paid:'Baixada'};
+  const items=bills.slice().sort((a,b)=>a.due.localeCompare(b.due));
+  return '<div class="page-heading"><h1>Minhas cobranças</h1></div><section>'+
+    (items.length?items.map(bill=>'<article class="reservation"><div class="date-tile"><strong>'+bill.due.slice(-2)+'</strong><small>'+esc(when(bill.due,{month:'short'}))+'</small></div>'+
+      '<div><span class="status-tag '+(bill.state==='paid'?'green':'amber')+'">'+esc(labels[bill.state])+'</span><h3>'+esc(bill.descricao)+'</h3>'+
+      '<p>Vencimento: '+esc(when(bill.due))+' · Valor: '+esc(currency(bill.cents))+' · Saldo: '+esc(currency(bill.cents-bill.received))+'</p></div></article>').join(''):
+      '<p class="muted">Nenhuma cobrança confirmada pela secretaria.</p>')+'</section>';
+}
 function render(){
-  account.innerHTML=attendee()?button('Meus agendamentos','mine')+button('Sair','out'):
+  account.innerHTML=attendee()?button('Meus agendamentos','mine')+button('Minhas cobranças','bills')+button('Sair','out'):
    preview()?'<a class="portal-link" href="/">Voltar à secretaria</a>':button('Minha conta','auth');
   let content;
   if(view==='mine'&&attendee())content=myBookings();
+  else if(view==='bills'&&attendee())content=myBills();
   else if(view==='auth')content='<div class="login-panel"><h1>Minha conta</h1>'+credentials()+button('Voltar aos horários','new')+'</div>';
   else{
     content='<div class="page-heading"><h1>'+(changeId?'Remarcar atendimento':'Agendar atendimento')+'</h1></div>'+stages()+
@@ -158,6 +176,7 @@ async function handle(action,value){
   if(action==='new'){reset();await reload()}
   if(action==='auth'){view='auth';authMode='login'}
   if(action==='mine'){reset();await reload();view=attendee()?'mine':'auth'}
+  if(action==='bills'){reset();await reload();view=attendee()?'bills':'auth'}
   if(action==='history')historyOpen=!historyOpen;
   if(action==='signup'||action==='login'){rememberFields();authMode=action}
   if(action==='out'){await request('/logout',{});reset();await reload()}
@@ -167,7 +186,10 @@ async function handle(action,value){
   if(action==='back1'){step=1;service='';day='';choice=null}
   if(action==='back2'){step=2;choice=null}
   if(action==='refresh')await reload();
-  if(action==='change'){reset();changeId=value;await reload()}
+  if(action==='change'){
+    reset();changeId=value;await reload();
+    if(slots.length){service=slots[0].rule;step=2}
+  }
   if(action==='ics'){const entry=mine.find(e=>e.id===value);if(entry)downloadCalendar(entry)}
   if(action==='book'){
     const entry=await request('/reservar',{rule:choice.rule,day:choice.day,start:choice.start,id:changeId});

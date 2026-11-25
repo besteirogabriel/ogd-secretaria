@@ -33,7 +33,7 @@ async function save(change,after){
        }
      }
    }
-   db=next;dlg.close();after?.();render();notify('Registro salvo.');
+   db=(await api('/dados')).data;dlg.close();after?.();render();notify('Registro salvo.');
  }catch(error){if(error.status===409&&error.message.startsWith('Registro alterado')){dlg.close();await load();notify(error.message)}else formError(error.message)}
  finally{busy=false}
 }
@@ -53,7 +53,7 @@ function modal(title,fields,values,submit){
        return '<option value="'+esc(id)+'" '+(value===id?'selected':'')+'>'+esc(label)+'</option>';
      }).join('')+'</select>';
    }else if(f.type==='area')tag='<textarea'+attr+'>'+esc(value)+'</textarea>';
-   else tag='<input type="'+f.type+'"'+attr+' value="'+esc(value)+'" '+(f.type==='number'?'min=".01" step=".01"':'')+'>';
+   else tag='<input type="'+f.type+'"'+attr+' value="'+esc(value)+'" '+(f.type==='number'?'min="'+esc(f.min??'.01')+'" step="'+esc(f.step??'.01')+'" '+(f.max!==undefined?'max="'+esc(f.max)+'"':''):'')+'>';
    return '<label class="form-field '+(['date','time'].includes(f.type)?'compact':'')+'">'+esc(f.label)+tag+'</label>';
  }).join('');
  form.innerHTML='<div class="detail-head"><h2>'+esc(title)+'</h2>'+btn('Fechar',()=>dlg.close(),'subtle')+'</div><div class="form-layout">'+controls+'</div><p class="error" data-form-error role="alert"></p><div class="row detail-actions"><button class="primary">Salvar</button>'+btn('Cancelar',()=>dlg.close())+'</div>';
@@ -81,28 +81,53 @@ function analysis(p){modal('Análise inicial',[req('data','Data','date'),field('
 function slot(p,i){modal('Posição da configuração',[req('label','Posição'),field('nome','Nome ou identificação observada'),field('obs','Observações','area')],p.map[i]||{},v=>save(d=>person(p.id,d).map[i]=v))}
 let fichaPane=0;
 function profile(p){const a=p.analysis;const entry=(label,value)=>value?'<p><b>'+label+'</b><br>'+esc(value)+'</p>':'';
-return btn('Voltar aos cadastros',()=>{personId='';render()})+'<div class="row"><h1>'+esc(p.nome)+'</h1>'+btn('Editar cadastro',()=>editPerson(p))+btn('Baixar ficha PDF',()=>downloadFicha(p),'primary')+'</div><p>'+[p.tipo,p.tel,p.email,br(p.nasc),signoSolar(p.nasc),p.end].filter(Boolean).map(esc).join(' · ')+'</p>'+caseNotes(p)+'<section><div class="row"><h2>Análise inicial</h2>'+btn('Editar análise',()=>analysis(p))+'</div><small>'+br(a.data)+' · '+esc(a.status)+'</small>'+entry('Responsável',a.autor)+entry('Motivo da procura',a.motivo)+entry('Histórico',a.historico)+entry('Expectativas',a.objetivos)+entry('Observações',a.obs)+entry('Acompanhamento',a.plano)+'</section><section><div class="row"><h2>Configuração espiritual</h2>'+btn('Editar descrição',()=>modal('Descrição da configuração',[field('intro','Texto','area')],p,v=>save(d=>person(p.id,d).intro=v.intro)))+'</div><p>'+esc(p.intro)+'</p><div class="split"><div class="map"><img src="/mapa.png" alt="Diagrama de referência da configuração espiritual">'+positions.map(([label,x,y],i)=>'<button title="'+esc(p.map[i].label)+'" aria-label="'+esc(p.map[i].label)+'" style="left:'+x/454*100+'%;top:'+(y-130)/401*100+'%" data-action="'+action(()=>slot(p,i))+'">'+(p.map[i].nome||p.map[i].label!==label?'<span>'+esc(p.map[i].label)+'<br><b>'+esc(p.map[i].nome)+'</b></span>':'')+'</button>').join('')+'</div><div class="positions">'+p.map.map((s,i)=>'<div class="item"><div class="row"><strong>'+esc(s.label)+'</strong>'+btn('Editar',()=>slot(p,i))+'</div>'+[s.nome,s.obs].filter(Boolean).map(x=>'<p>'+esc(x)+'</p>').join('')+'</div>').join('')+btn('Adicionar posição',()=>slot(p,p.map.length))+'</div></div></section><section><div class="row"><h2>Histórico de atendimentos</h2>'+btn('Agendar',()=>eventForm(null,p.id))+'</div>'+events(db.agenda.filter(e=>e.pid===p.id).sort((a,b)=>b.day.localeCompare(a.day)||b.start.localeCompare(a.start)))+'</section>'}
+return btn('Voltar aos cadastros',()=>{personId='';render()})+'<div class="row"><h1>'+esc(p.nome)+'</h1>'+btn('Editar cadastro',()=>editPerson(p))+personFinance(p)+btn('Baixar ficha PDF',()=>downloadFicha(p),'primary')+'</div><p>'+[p.tipo,p.tel,p.email,br(p.nasc),signoSolar(p.nasc),p.end].filter(Boolean).map(esc).join(' · ')+'</p>'+caseNotes(p) +personAcademic(p)+'<section><div class="row"><h2>Análise inicial</h2>'+btn('Editar análise',()=>analysis(p))+'</div><small>'+br(a.data)+' · '+esc(a.status)+'</small>'+entry('Responsável',a.autor)+entry('Motivo da procura',a.motivo)+entry('Histórico',a.historico)+entry('Expectativas',a.objetivos)+entry('Observações',a.obs)+entry('Acompanhamento',a.plano)+'</section><section><div class="row"><h2>Configuração espiritual</h2>'+btn('Editar descrição',()=>modal('Descrição da configuração',[field('intro','Texto','area')],p,v=>save(d=>person(p.id,d).intro=v.intro)))+'</div><p>'+esc(p.intro)+'</p><div class="split"><div class="map"><img src="/mapa.png" alt="Diagrama de referência da configuração espiritual">'+positions.map(([label,x,y],i)=>'<button title="'+esc(p.map[i].label)+'" aria-label="'+esc(p.map[i].label)+'" style="left:'+x/454*100+'%;top:'+(y-130)/401*100+'%" data-action="'+action(()=>slot(p,i))+'">'+(p.map[i].nome||p.map[i].label!==label?'<span>'+esc(p.map[i].label)+'<br><b>'+esc(p.map[i].nome)+'</b></span>':'')+'</button>').join('')+'</div><div class="positions">'+p.map.map((s,i)=>'<div class="item"><div class="row"><strong>'+esc(s.label)+'</strong>'+btn('Editar',()=>slot(p,i))+'</div>'+[s.nome,s.obs].filter(Boolean).map(x=>'<p>'+esc(x)+'</p>').join('')+'</div>').join('')+btn('Adicionar posição',()=>slot(p,p.map.length))+'</div></div></section><section><div class="row"><h2>Histórico de atendimentos</h2>'+btn('Agendar',()=>eventForm(null,p.id))+'</div>'+events(db.agenda.filter(e=>e.pid===p.id).sort((a,b)=>b.day.localeCompare(a.day)||b.start.localeCompare(a.start)))+'</section>'}
 function events(list){return list.length?list.map(e=>'<div class="item"><div class="row"><strong>'+esc(e.start)+' – '+esc(e.end)+' · '+esc(e.title)+'</strong>'+btn('Editar',()=>eventForm(e))+(e.pid?btn(e.note?'Editar relato':'Registrar relato',()=>note(e)):'')+'</div><small>'+br(e.day)+' · '+esc(person(e.pid)?.nome||'Atividade do templo')+' · '+esc(e.status)+' · '+esc(e.owner)+'</small>'+(e.note?'<p>'+esc(e.note)+'</p>':'')+'</div>').join(''):'<p class="muted">Nenhum atendimento neste período.</p>'}
 function note(e){modal('Relato do atendimento',[req('owner','Responsável'),req('note','Relato, orientações e acompanhamento','area')],e,v=>save(d=>Object.assign(d.agenda.find(x=>x.id===e.id),v,{status:'Realizado'})))}
 function eventForm(event,pid='',defaults={}){
  const people=db.pessoas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
  const initial=event?{...event,...defaults}:{day:selected,start:'09:00',end:'10:00',owner:me.name,pid,...defaults};
+ const linked=!!(event&&(findBill('agenda',event.id)||db.cobrancas_agenda?.some(b=>b.origin_id===event.id)));
+ const billingFields=event?.class_id||linked?[]:[
+   field('billing_mode','Cobrança do atendimento','select',[['draft','Gerar rascunho'],['free','Gratuito']]),
+   monetaryField('billing_amount','Valor previsto (R$)'),
+   integerField('billing_days','Vencimento em dias após o atendimento',0,365)
+ ];
  modal(event?'Editar compromisso':'Novo compromisso',[
    req('title','Atendimento ou atividade'),
-   field('pid','Participante','select',[['','Atividade interna'],...people.map(p=>[p.id,p.nome])]),
+   ...(!event?.class_id&&!linked?[field('pid','Participante','select',[['','Atividade interna'],...people.map(p=>[p.id,p.nome])])]:[]),
    req('day','Data','date'),req('start','Início','time'),req('end','Término','time'),
    req('owner','Responsável'),field('room','Sala ou local'),
-   field('status','Situação','select',calendarStatuses)
- ],initial,values=>{
+   field('status','Situação','select',calendarStatuses),...billingFields
+ ],{...initial,billing_mode:initial.free?'free':'draft',billing_amount:initial.fee==null?'':decimal(initial.fee),billing_days:initial.due_days||0},values=>{
    if(values.start>=values.end){formError('O horário de término precisa ser posterior ao início.');return}
-   if(event?.note&&values.pid!==event.pid){formError('O participante está vinculado ao relato deste atendimento.');return}
-   const item={...event,...values,id:event?.id||uid()};
+   if(event?.note&&values.pid!==undefined&&values.pid!==event.pid){formError('O participante está vinculado ao relato deste atendimento.');return}
+   const {billing_mode,billing_amount,billing_days,...visit}=values;
+   const item={...event,...visit,id:event?.id||uid()};
+   if(billing_mode){
+     item.free=billing_mode==='free';
+     item.fee=item.free||!billing_amount?null:cents(billing_amount);
+     item.due_days=Number(billing_days);
+   }
    if(event&&(item.day!==event.day||item.start!==event.start))delete item.arrived_at;
    save(data=>{
      if(event)data.agenda[data.agenda.findIndex(entry=>entry.id===event.id)]=item;
      else data.agenda.push(item);
    },()=>{selected=values.day;lastCalendarId=item.id});
  });
+ if(billingFields.length){
+   const refreshBilling=()=>{
+     const assigned=!!form.elements.pid.value;
+     form.elements.billing_mode.closest('label').hidden=!assigned;
+     const billable=assigned&&form.elements.billing_mode.value!=='free';
+     for(const name of ['billing_amount','billing_days']){
+       form.elements[name].closest('label').hidden=!billable;
+     }
+   };
+   form.elements.pid.onchange=refreshBilling;
+   form.elements.billing_mode.onchange=refreshBilling;
+   refreshBilling();
+ }
  const startInput=form.elements.start,endInput=form.elements.end;
  let duration=minutes(initial.end)-minutes(initial.start);
  endInput.addEventListener('change',()=>{duration=minutes(endInput.value)-minutes(startInput.value)});
@@ -116,7 +141,7 @@ const calendarFilters={owner:'',room:'',status:'',source:'',query:''};
 const normalize=value=>String(value??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('pt-BR');
 const statusTone=status=>({Confirmado:'green',Realizado:'blue',Faltou:'amber',Cancelado:'neutral'}[status]||'red');
 function statusTag(status){return '<span class="status-tag '+statusTone(status)+'">'+esc(status)+'</span>'}
-function eventOrigin(event){return event.source==='Portal'?'Portal':'Secretaria'}
+function eventOrigin(event){return event.class_id?'Turma':event.source==='Portal'?'Portal':'Secretaria'}
 function dateLabel(day,options){return new Date(day+'T12:00:00').toLocaleDateString('pt-BR',options)}
 
 function signoSolar(value){
@@ -173,20 +198,21 @@ function detail(e){
  const p=person(e.pid);
  const details=(label,value)=>'<div><dt>'+label+'</dt><dd>'+esc(value||'—')+'</dd></div>';
  const statusUpdate=status=>save(d=>{d.agenda.find(item=>item.id===e.id).status=status});
- const primary=active&&!e.arrived_at&&e.day<=today()?btn('Registrar chegada',()=>save(d=>{
+ const primary=!e.class_id&&active&&!e.arrived_at&&e.day<=today()?btn('Registrar chegada',()=>save(d=>{
    d.agenda.find(item=>item.id===e.id).arrived_at=new Date().toISOString();
  }),'primary'):(p&&active?btn('Registrar atendimento',()=>note(e),'primary'):'');
  form.innerHTML='<div class="detail-head"><div>'+statusTag(e.status)+' <span class="muted">'+esc(eventOrigin(e))+'</span><h2>'+esc(e.title)+'</h2><p>'+esc(dateLabel(e.day,{weekday:'long',day:'numeric',month:'long'}))+' · '+esc(e.start)+'–'+esc(e.end)+'</p></div>'+btn('Fechar',()=>dlg.close(),'subtle')+'</div><p class="error" data-form-error role="alert"></p>'+
  '<dl class="detail-grid">'+details('Participante',p?.nome||'Atividade interna')+details('Responsável',e.owner)+details('Sala ou local',e.room)+details('Chegada',e.arrived_at?new Intl.DateTimeFormat('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}).format(new Date(e.arrived_at)):'')+'</dl>'+
+ billCard(e)+classEventActions(e)+stockForEvent(e)+
  (e.note?'<div class="detail-note"><h3>Relato do atendimento</h3><p>'+esc(e.note)+'</p></div>':'')+
  '<div class="row detail-actions">'+primary+
  btn(active?'Editar ou reagendar':'Editar compromisso',()=>eventForm(e))+
  (p?btn('Abrir ficha',()=>{dlg.close();openPerson(p)}):'')+
  (p&&(e.note||e.status==='Realizado')?btn(e.note?'Editar relato':'Adicionar relato',()=>note(e)):'')+
  (active&&e.status==='Agendado'?btn('Confirmar agendamento',()=>statusUpdate('Confirmado')):'')+
- btn('Agendar retorno',()=>eventForm(null,e.pid,{...Object.fromEntries(['title','owner','room','start','end'].map(key=>[key,e[key]||''])),day:offsetDate(e.day,7)}))+
+ (!e.class_id?btn('Agendar retorno',()=>eventForm(null,e.pid,{...Object.fromEntries(['title','owner','room','start','end'].map(key=>[key,e[key]||''])),day:offsetDate(e.day,7),fee:e.fee,free:e.free,due_days:e.due_days})):'')+
  btn('Exportar .ics',()=>exportICS(e))+
- (active&&e.day<=today()?btn('Marcar falta',()=>{if(confirm('Registrar falta neste atendimento?'))statusUpdate('Faltou')}):'')+
+ (active&&!e.class_id&&e.day<=today()?btn('Marcar falta',()=>{if(confirm('Registrar falta neste atendimento?'))statusUpdate('Faltou')}):'')+
  (active?btn('Cancelar compromisso',()=>{if(confirm('Cancelar o compromisso e liberar o horário?'))statusUpdate('Cancelado')},'danger'):'')+'</div>';
  form.onsubmit=event=>event.preventDefault();
  dlg.classList.add('drawer');if(!dlg.open)dlg.showModal();
@@ -255,7 +281,7 @@ function agenda(){
  return '<div class="page-title"><h1>Agenda</h1><div class="row">'+btn('Autoagendamento',publishPanel)+btn('+ Novo compromisso',()=>eventForm(),'primary')+'</div></div>'+
  '<div class="calendar-shell"><div class="agenda-tools"><div class="period-nav">'+btn('‹',()=>shift(-1),'arrow')+btn('›',()=>shift(1),'arrow')+btn('Hoje',()=>{selected=today();render()})+'<h2>'+esc(period)+'</h2></div><div class="segmented">'+modes+'</div></div>'+
  '<div class="agenda-filters"><label>Buscar<input id="filter-query" type="search" value="'+esc(calendarFilters.query)+'" placeholder="Pessoa ou atendimento"></label>'+
- select('owner','Responsável',unique('owner'))+select('room','Sala',unique('room'))+select('source','Origem',['Portal','Secretaria'])+select('status','Situação',calendarStatuses)+
+ select('owner','Responsável',unique('owner'))+select('room','Sala',unique('room'))+select('source','Origem',['Portal','Secretaria','Turma'])+select('status','Situação',calendarStatuses)+
  '<label>Ir para data<input type="date" id="jump-day" value="'+selected+'"></label>'+btn('Limpar',()=>{Object.keys(calendarFilters).forEach(k=>calendarFilters[k]='');render()},'subtle')+'</div>'+
  '<div id="planner-body">'+calendarBody()+'</div></div>';
 }
@@ -317,15 +343,6 @@ function installProfileTabs(){
  });
  sections[0].before(tabs);
 }
-function bill(b){modal('Lançamento financeiro',[field('tipo','Tipo','select',['A receber','A pagar']),req('descricao','Descrição'),field('pid','Vínculo','select',[['','Geral'],...db.pessoas.map(p=>[p.id,p.nome])]),req('valor','Valor (R$)','number'),req('due','Vencimento','date'),field('paid','Data da baixa','date')],b?{...b,valor:(b.cents/100).toFixed(2)}:{due:today()},v=>{const cents=Math.round(Number(v.valor)*100);if(!Number.isSafeInteger(cents)||cents<1)return alert('Valor inválido.');delete v.valor;save(d=>b?Object.assign(d.contas.find(x=>x.id===b.id),v,{cents}):d.contas.push({...v,id:uid(),cents}))})}
-function totals(items,type){return items.filter(b=>b.tipo===type&&!b.paid).reduce((sum,b)=>sum+b.cents,0)}
-function finance(){
- const items=db.contas.slice().sort((a,b)=>a.due.localeCompare(b.due));
- const filters=['Em aberto','Vencidos','Baixados','Todos'];
- const ledger=items.filter(b=>financeFilter==='Todos'||(financeFilter==='Baixados'?!!b.paid:!b.paid&&(financeFilter!=='Vencidos'||b.due<today())));
- const rows=ledger.map(b=>'<tr><td><strong>'+esc(b.descricao)+'</strong><small>'+esc(person(b.pid)?.nome||'Geral')+'</small></td><td>'+esc(b.tipo)+'</td><td>'+br(b.due)+'</td><td class="amount">'+money(b.cents)+'</td><td>'+esc(b.paid?'Baixa em '+br(b.paid):b.due<today()?'Vencido':'Em aberto')+'</td><td>'+btn('Editar',()=>bill(b))+(!b.paid?btn('Dar baixa',()=>modal('Registrar baixa',[req('paid','Data da baixa','date')],{paid:today()},v=>save(d=>Object.assign(d.contas.find(x=>x.id===b.id),v)))):'')+'</td></tr>').join('');
- return '<div class="row"><h1>Financeiro</h1>'+btn('Novo lançamento',()=>bill(),'primary')+'</div><div class="metrics">'+metric('A receber',money(totals(items,'A receber')))+metric('A pagar',money(totals(items,'A pagar')))+metric('Contas vencidas',items.filter(b=>!b.paid&&b.due<today()).length)+'</div><section><div class="tabs">'+filters.map(f=>btn(f,()=>{financeFilter=f;render()},financeFilter===f?'active':'')).join('')+'</div><div class="tablewrap"><table><thead><tr><th>Lançamento</th><th>Tipo</th><th>Vencimento</th><th>Valor</th><th>Situação</th><th>Ações</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+(!rows?'<p class="muted">Nenhum lançamento neste filtro.</p>':'')+'</section>';
-}
 function metric(label,value){return '<div><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong></div>'}
 function notify(message){const el=$('notice');el.textContent=message;el.classList.add('show');clearTimeout(notify.timer);notify.timer=setTimeout(()=>el.classList.remove('show'),2300)}
 function openPerson(p,pane=0){personId=p.id;fichaPane=pane;tab='Cadastros';render()}
@@ -343,7 +360,7 @@ function home(){
  '</div><div class="queue"><div class="row"><h3>Relatos a registrar</h3><span class="status-tag amber">'+pending.length+'</span></div>'+
  pending.slice(0,5).map(e=>'<div class="row item"><strong>'+esc(person(e.pid)?.nome)+'</strong>'+btn('Registrar',()=>note(e))+'</div>').join('')+
  (!pending.length?'<p class="muted">Nenhum relato pendente.</p>':'')+
- '</div><div class="queue"><div class="row"><h3>Análises em rascunho</h3><span class="status-tag neutral">'+drafts.length+'</span></div>'+
+ '</div>'+operationsQueue()+'<div class="queue"><div class="row"><h3>Análises em rascunho</h3><span class="status-tag neutral">'+drafts.length+'</span></div>'+
  drafts.slice(0,5).map(p=>'<div class="row item"><strong>'+esc(p.nome)+'</strong>'+btn('Abrir ficha',()=>openPerson(p))+'</div>').join('')+
  (!drafts.length?'<p class="muted">Nenhuma análise pendente.</p>':'')+'</div></section></div>';
 }
@@ -356,6 +373,8 @@ const navShapes={
  'Agenda':'M3 6h18v15H3zM7 3v6m10-6v6M3 11h18m-14 4h4',
  'Cadastros':'M4 4h16v16H4zM8 9h8m-8 5h5',
  'Financeiro':'M3 6h18v13H3zM3 10h18m-7 5h4',
+ 'Ensino':'M2 9l10-5 10 5-10 5-10-5zm5 3v5l5 3 5-3v-5',
+ 'Estoque':'M3 6h18v4H3zm2 4v10h14V10m-9 4h4',
  'Equipe':'M4 20v-2a4 4 0 0 1 8 0v2m1-13a3 3 0 1 1 6 0a3 3 0 1 1-6 0M5 8a3 3 0 1 1 6 0a3 3 0 1 1-6 0m11 6a4 4 0 0 1 5 4v2'
 };
 function navItem(t){
@@ -379,7 +398,10 @@ async function boot(){
  await load();
 }
 async function go(next){
- try{if(next==='Agenda'||next==='Recepção'){db=(await api('/dados')).data}
+ try{if(['Agenda','Recepção','Financeiro','Ensino','Estoque'].includes(next)){db=(await api('/dados')).data}
+ if(next==='Ensino')classId='';
+ if(next==='Estoque')stockId='';
+ if(next==='Financeiro'){invoiceId='';financePerson=''}
  if(next==='Equipe'){[team,audit]=await Promise.all([api('/equipe'),api('/atividade')])}
  tab=next;personId='';render()}catch(err){alert(err.message)}
 }
@@ -415,15 +437,16 @@ document.addEventListener('keydown',event=>{
 });
 function render(){
  if(!me||!db)return;
- actions=[];const menus=me.role==='Financeiro'?['Financeiro']:['Recepção','Agenda','Cadastros',...(me.role==='Administrador'?['Financeiro','Equipe']:[])];
+ actions=[];const menus=me.role==='Financeiro'?['Financeiro']:['Recepção','Agenda','Cadastros','Ensino',...(me.role==='Administrador'?['Financeiro','Estoque','Equipe']:[])];
  $('nav').innerHTML=menus.map(navItem).join('');
  $('section-label').textContent='Secretaria / '+tab;
  $('top-tools').innerHTML=me.role==='Financeiro'?'':btn('Buscar pessoa',quickFind,'subtle');
  $('identity').innerHTML='<strong>'+esc(me.name)+'</strong><small>'+esc(me.role)+'</small>'+btn('Alterar senha',()=>modal('Alterar senha',[req('atual','Senha atual','password'),req('nova','Nova senha (mínimo 12 caracteres)','password')],{},async values=>{try{await api('/senha',values);dlg.close();notify('Senha atualizada.')}catch(err){alert(err.message)}}))+btn('Sair',async()=>{try{await api('/logout',{});clearSession();await boot()}catch(e){alert(e.message)}});
- main.innerHTML=tab==='Recepção'?home():tab==='Agenda'?agenda():tab==='Financeiro'?finance():tab==='Equipe'?staff():personId?profile(person(personId)):listPeople();
+ main.innerHTML=tab==='Recepção'?home():tab==='Agenda'?agenda():tab==='Financeiro'?finance():tab==='Ensino'?academic():tab==='Estoque'?stock():tab==='Equipe'?staff():personId?profile(person(personId)):listPeople();
  if(tab==='Cadastros'&&personId)installProfileTabs();
  if(tab==='Agenda')wireAgenda();
  if($('busca'))wirePeople();
+ wireOperations();
 }
 boot().catch(err=>{$('access').textContent='Não foi possível abrir a secretaria. '+err.message});
 

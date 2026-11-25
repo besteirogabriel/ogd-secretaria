@@ -16,18 +16,22 @@ from datetime import date, datetime, time as clock
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import operacoes
 import reservas
 from signos import signo
 from urllib.parse import parse_qs, urlsplit, unquote
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('OGD_DATA', ROOT / 'dados')).resolve()
-KINDS = ('pessoas', 'agenda', 'contas')
-ROLES = {'Administrador': KINDS, 'Atendimento': ('pessoas', 'agenda'), 'Financeiro': ('contas',)}
+LEGACY_KINDS = ('pessoas', 'agenda', 'contas')
+ACADEMIC = ('cursos', 'turmas', 'matriculas')
+KINDS = LEGACY_KINDS + ACADEMIC + ('produtos', 'movimentos')
+ROLES = {'Administrador': KINDS, 'Atendimento': ('pessoas', 'agenda') + ACADEMIC, 'Financeiro': ('contas',)}
 FILES = {'/': ('index.html', 'text/html; charset=utf-8'), '/app.js': ('app.js', 'text/javascript'),
          '/interface.css': ('interface.css', 'text/css'), '/mapa.png': ('mapa.png', 'image/png'),
          '/marca.svg': ('Grenze_vermelho/Assinatura_horizontal.svg', 'image/svg+xml'),
          '/alegreya.ttf': ('Grenze_vermelho/Fontes/Alegreya.ttf', 'font/ttf')}
+FILES['/operacoes.js'] = ('operacoes.js', 'text/javascript')
 ORIGIN = 'http://127.0.0.1:8765'
 PUBLIC = os.environ.get('OGD_PUBLIC_ORIGIN','').rstrip('/')
 if PUBLIC and (urlsplit(PUBLIC).scheme!='https' or not urlsplit(PUBLIC).hostname or urlsplit(PUBLIC).path or urlsplit(PUBLIC).query or urlsplit(PUBLIC).fragment or urlsplit(PUBLIC).username):
@@ -66,6 +70,9 @@ def initialize():
             'CREATE TABLE IF NOT EXISTS throttle (key TEXT, ts INTEGER)',
             'CREATE INDEX IF NOT EXISTS throttle_key ON throttle(key,ts)',
             'CREATE TABLE IF NOT EXISTS book_rules (id TEXT PRIMARY KEY, body TEXT NOT NULL)',
+            '''CREATE UNIQUE INDEX IF NOT EXISTS bills_by_origin ON records(
+                   json_extract(body,'$.origin_kind'), json_extract(body,'$.origin_id')
+               ) WHERE kind='contas' AND json_extract(body,'$.origin_id') IS NOT NULL''',
             'CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT)',
         ):
             con.execute(sql)
@@ -75,7 +82,7 @@ def initialize():
                 with closing(sqlite3.connect(legacy.as_uri()+'?mode=ro', uri=True)) as old:
                     row = old.execute('SELECT dados FROM gestao WHERE id=1').fetchone()
                     data = json.loads(row[0])
-                    for kind in KINDS:
+                    for kind in LEGACY_KINDS:
                         for item in data[kind]:
                             con.execute('INSERT INTO records VALUES (?,?,?)', (kind,item['id'],json.dumps(item)))
             con.execute("INSERT INTO settings VALUES ('migration','1')")
@@ -128,8 +135,27 @@ def validate(con,kind,item,previous):
         date.fromisoformat(need('due'))
         if item.get('paid'):
             date.fromisoformat(item['paid'])
-        require(item.get('tipo') in ('A pagar','A receber') and type(item.get('cents')) is int and 0<item['cents']<=9007199254740991,'Lançamento inválido.')
+        minimum=0 if item.get('billing_state') in ('draft','void') else 1
+        require(item.get('tipo') in ('A pagar','A receber') and type(item.get('cents')) is int and minimum<=item['cents']<=9007199254740991,'Lançamento inválido.')
+        gross,discount=item.get('gross'),item.get('discount',0)
+        if gross is not None:
+            require(type(gross) is int and type(discount) is int and 0<=discount<=gross
+                    and gross-discount==item['cents'],'Confira o valor original e o desconto.')
+        operacoes.validate_bill_edit(item,previous,require)
         return
+    fee=item.get('fee')
+    if fee is not None:
+        operacoes.number(item,'fee',0,10**10,require)
+    if 'due_days' in item:
+        operacoes.number(item,'due_days',0,365,require)
+    if item.get('class_id'):
+        klass=operacoes.existing(con,'turmas',item['class_id'],require)
+        require(not pid and klass['start']<=item.get('day','')<=klass['end'],'A aula precisa ficar dentro do período da turma.')
+    if previous:
+        require(item.get('class_id')==previous.get('class_id'),'A turma da aula não pode mudar.')
+        require(item.get('attendance')==previous.get('attendance'),'Use a chamada para alterar presenças.')
+        linked=operacoes.linked_bill(con,'agenda',item['id'])
+        require(not linked or pid==previous.get('pid'),'O participante está vinculado a uma cobrança.')
     need('title')
     owner=need('owner').strip().casefold()
     day=need('day')
@@ -211,6 +237,8 @@ class Handler(BaseHTTPRequestHandler):
                     except ModuleNotFoundError:
                         raise Problem(503,'Instale as dependências do PDF conforme o README.')
                     return self.respond(200,generate(person,events,signo(person.get('nasc'))),'application/pdf')
+                if not post and path.startswith('/documentos/'):
+                    return self.respond(200,self.document(con,user,path),'application/pdf')
                 result,cookie=self.route(con,path,post,body,user,key)
             self.respond(200,result,cookie=cookie+'; Secure' if public_request and cookie else cookie)
         except Problem as exc:
@@ -219,6 +247,28 @@ class Handler(BaseHTTPRequestHandler):
             self.respond(409,{'error':'Registro já existente.'})
         except (KeyError,ValueError,TypeError,AttributeError):
             self.respond(400,{'error':'Dados inválidos.'})
+
+    def document(self, con, user, path):
+        require(user,'Entre para acessar este documento.',401)
+        _,_,kind,record_id,*extra=path.split('/')
+        role=ROLES.get(user['role'],())
+        require((kind=='recibo' and 'contas' in role) or
+                (kind=='conclusao' and 'matriculas' in role),'Acesso restrito.',403)
+        try:
+            import documentos_operacionais as pdf
+        except ModuleNotFoundError:
+            raise Problem(503,'Instale as dependências do PDF conforme o README.')
+        if kind=='recibo':
+            bill=operacoes.existing(con,'contas',record_id,require)
+            require(len(extra)==1,'Informe a baixa.')
+            payment=next((p for p in bill.get('payments',[]) if p['id']==extra[0] and not p.get('reversed')),None)
+            require(payment,'Baixa não encontrada ou estornada.',404)
+            return pdf.receipt(bill,payment,operacoes.find(con,'pessoas',bill.get('pid')))
+        require(not extra,'Documento inválido.',404)
+        enrollment=operacoes.existing(con,'matriculas',record_id,require)
+        require(enrollment['status']=='Concluída' and enrollment.get('completion'),'Matrícula sem conclusão.',404)
+        return pdf.declaration(enrollment,operacoes.existing(con,'pessoas',enrollment['pid'],require),
+                               operacoes.existing(con,'turmas',enrollment['class_id'],require))
 
     def route(self,con,path,post,b,user,key):
         now=int(time.time())
@@ -230,7 +280,11 @@ class Handler(BaseHTTPRequestHandler):
             pid=link[0] if link else None
             requested=parse_qs(urlsplit(self.path).query).get('reserva',[''])[0]
             allowed=reservas.reschedulable(con,requested,pid) if pid and requested else None
-            return {'slots':reservas.slots(con,pid=pid,ignore_id=allowed['id'] if allowed else None)},None
+            slots=reservas.slots(con,pid=pid,ignore_id=allowed['id'] if allowed else None)
+            if allowed:
+                slots=[dict(slot,fee=allowed.get('fee'),free=allowed.get('free',False))
+                       for slot in slots if slot['rule']==allowed.get('rule')]
+            return {'slots':slots},None
         if post and path in ('/setup','/login','/inscricao'):
             if path=='/inscricao':
                 require(exists,'A secretaria ainda não abriu os cadastros.',409)
@@ -272,13 +326,22 @@ class Handler(BaseHTTPRequestHandler):
         if path=='/logout' and post:
             con.execute('DELETE FROM sessions WHERE token=?',(key,))
             return {},'ogd=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0'
-        if path in ('/minhas-reservas','/reservar'):
+        if path in ('/minhas-reservas','/reservar','/minhas-cobrancas'):
             require(role=='Participante','Use uma conta de aluno ou cliente.',403)
             pid=con.execute('SELECT pid FROM portal_people WHERE uid=?',(uid,)).fetchone()[0]
+            if path=='/minhas-cobrancas' and not post:
+                return [{
+                    'id':bill['id'],'descricao':bill['descricao'],'due':bill['due'],
+                    'cents':bill['cents'],'received':operacoes.received(bill),'state':operacoes.bill_state(bill)
+                } for bill in operacoes.records(con,'contas')
+                    if bill.get('pid')==pid and bill.get('origin_id') and not bill.get('review')
+                    and operacoes.bill_state(bill) not in ('draft','void')],None
             if path=='/minhas-reservas' and not post:
                 return reservas.own(con,pid),None
             require(path=='/reservar' and post,'Operação inválida.')
-            item=reservas.book(con,pid,b,require,validate)
+            event=reservas.book(con,pid,b,require,validate)
+            operacoes.sync_visit(con,event)
+            item={k:event[k] for k in ('id','title','day','start','end','status')}
             con.execute('INSERT INTO audit(ts,uid,action,target) VALUES (?,?,?,?)',(now,uid,'Reserva · '+item['status'],item['id']))
             return item,None
         require(role in ROLES,'Acesso exclusivo da secretaria.',403)
@@ -297,16 +360,44 @@ class Handler(BaseHTTPRequestHandler):
                 elif role=='Financeiro' and row['kind']=='pessoas':
                     p=json.loads(row['body'])
                     data['pessoas'].append({'id':p['id'],'nome':p['nome']})
+            if role=='Atendimento':
+                data['cobrancas_agenda']=[{'origin_id':b['origin_id'],'state':operacoes.bill_state(b)}
+                    for b in operacoes.records(con,'contas') if b.get('origin_kind')=='agenda']
             return {'data':data},None
+        if path=='/operacao' and post:
+            operation=b.get('op')
+            handlers={
+                'produto':('produtos',operacoes.save_product),
+                'estoque':('produtos',lambda c,v,r:operacoes.move_stock(c,v,r,user['name'])),
+                'curso':('cursos',operacoes.save_course),
+                'turma':('turmas',operacoes.save_class),
+                'matricula':('matriculas',operacoes.enroll),
+                'transferir':('matriculas',operacoes.transfer),
+                'aulas':('turmas',lambda c,v,r:operacoes.schedule_lessons(c,v,r,validate)),
+                'chamada':('turmas',operacoes.take_attendance),
+                'vincular':('contas',operacoes.link_visit),
+            }
+            if operation in ('approve','void','reopen','pay','reverse'):
+                handler=('contas',lambda c,v,r:operacoes.finance(c,operation,v,r))
+            else:
+                handler=handlers.get(operation)
+            require(handler and handler[0] in ROLES[role],'Acesso restrito.',403)
+            item=handler[1](con,b,require)
+            con.execute('INSERT INTO audit(ts,uid,action,target) VALUES (?,?,?,?)',
+                        (now,uid,'Operação · '+operation,item['id']))
+            return {'id':item['id']},None
         if path=='/registro' and post:
             kind,item=b['kind'],b['item']
-            require(kind in ROLES[role],'Acesso restrito.',403)
+            require(kind in LEGACY_KINDS and kind in ROLES[role],'Acesso restrito.',403)
             require(isinstance(item,dict) and isinstance(item.get('id'),str) and 0<len(item['id'])<=128,'Identificador inválido.')
             row=con.execute('SELECT body FROM records WHERE kind=? AND id=?',(kind,item['id'])).fetchone()
             previous=json.loads(row[0]) if row else None
             require(previous==b['previous'],'Registro alterado por outra pessoa. Reabra a ficha.',409)
             validate(con,kind,item,previous)
-            con.execute('INSERT OR REPLACE INTO records VALUES (?,?,?)',(kind,item['id'],json.dumps(item,ensure_ascii=False)))
+            operacoes.store(con,kind,item)
+            if kind=='agenda' and (not previous or 'fee' in item or
+                    operacoes.linked_bill(con,'agenda',item['id'])):
+                operacoes.sync_visit(con,item)
             target=item['id']
             action=('Alteração' if row else 'Inclusão')+' · '+kind
         elif path in ('/equipe','/atividade','/usuario'):

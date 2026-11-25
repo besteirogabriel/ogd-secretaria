@@ -43,6 +43,9 @@ function ruleEditor(existing){
     '<div class="form-pair">'+input('start','Das','time','required')+input('end','Até','time','required')+'</div>'+
     '<div class="form-three">'+input('duration','Duração (min)','number','min="10" max="240" required')+
     input('notice','Antecedência (h)','number','min="0" max="168" required')+input('horizon','Abrir por (dias)','number','min="1" max="60" required')+'</div>'+
+    '<div class="form-pair"><label>Valor previsto (R$)<input name="fee" type="number" min="0" max="100000000" step=".01" value="'+(rule.fee==null?'':decimal(rule.fee))+'"></label>'+
+    '<label>Vencimento após atendimento (dias)<input name="due_days" type="number" required min="0" max="365" value="'+(rule.due_days||0)+'"></label></div>'+
+    '<label class="checkline"><input name="free" type="checkbox" '+(rule.free?'checked':'')+'>Serviço gratuito</label>'+
     '<label>Datas bloqueadas (AAAA-MM-DD, separadas por vírgula)<input name="blocked" value="'+esc(rule.blocked.join(', '))+'"></label>'+
     '<label class="checkline"><input name="active" type="checkbox" '+(rule.active?'checked':'')+'>Disponível para reservas online</label>'+
     '<p class="error" role="alert"></p><div class="row"><button class="primary">Salvar disponibilidade</button>'+btn('Cancelar',publishPanel)+'</div>';
@@ -54,7 +57,8 @@ function ruleEditor(existing){
     try{
       await api('/publicacao',{
         ...Object.fromEntries(data),id:existing?.id,previous:existing,days:data.getAll('days'),
-        blocked:data.get('blocked').split(',').map(value=>value.trim()).filter(Boolean),active:data.has('active')
+        blocked:data.get('blocked').split(',').map(value=>value.trim()).filter(Boolean),active:data.has('active'),
+        fee_cents:data.get('fee')===''?'':cents(data.get('fee')),free:data.has('free')
       });
       await publishPanel();
     }catch(error){form.querySelector('.error').textContent=error.message}

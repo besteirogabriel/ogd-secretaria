@@ -74,3 +74,44 @@ As visões Dia, Semana, Mês e Lista compartilham os filtros de responsável, sa
 No painel do compromisso, registre a chegada, abra a ficha, conclua o atendimento com um relato ou marque falta. A Recepção reúne quem aguarda, relatos em aberto e análises em rascunho. Use **Buscar pessoa** ou Ctrl+K (Cmd+K no Mac) para abrir uma ficha sem voltar à lista de cadastros.
 
 Em **Agenda → Autoagendamento → Visualizar portal**, a equipe pode conferir datas e horários publicados. O participante acompanha seus horários, pode exportá-los ao calendário e recebe confirmação na tela ao reservar, remarcar ou cancelar.
+
+## Financeiro integrado
+
+Ao salvar um atendimento com participante na agenda, registrar um atendimento direto na ficha ou receber uma reserva do portal, o sistema cria um rascunho vinculado ao atendimento. Defina um valor previsto e vencimento na agenda ou no serviço. Se o valor ficar em branco, o financeiro preenche antes de confirmar. Atendimentos gratuitos, atividades internas e aulas avulsas ficam sem cobrança individual. Atendimentos antigos podem ser vinculados a um lançamento existente ou gerar um rascunho pelo painel do compromisso.
+
+Em **Financeiro → Rascunhos**, abra o lançamento, ajuste valor, desconto e vencimento e confirme a cobrança. A página da cobrança reúne baixas parciais ou totais, estornos e recibos. A remarcação atualiza o vencimento automático e mantém datas ajustadas manualmente. Se o compromisso for cancelado, cobranças sem baixa são canceladas automaticamente. Cobranças com baixa ficam sinalizadas para revisão. O portal exibe cobranças confirmadas da conta do participante. Confirmação, pagamento e estorno são registros internos e não movimentam dinheiro.
+
+Use **Caixa mensal** para conferir baixas por mês e baixar o extrato, e **Recebíveis por atraso** para ver o saldo por faixa de vencimento. A ficha individual abre o financeiro da pessoa.
+
+## Estoque
+
+Crie produtos com código, unidade, categoria, localização, custo de referência e estoque mínimo. Registre entradas, saídas e contagens físicas. As saídas podem indicar o atendimento ou a aula que consumiu o material. Os detalhes do produto mostram saldo e histórico por operador, com estornos e exportação CSV. A aba **Reposição** lista produtos com saldo igual ou inferior ao mínimo.
+
+## Ensino
+
+Em **Ensino → Cursos**, cadastre ementa, carga horária e frequência mínima. Crie uma turma vinculada ao curso com instrutor, local, período, capacidade e taxa opcional. Matricule alunos pela turma ou pela ficha, gerencie a lista de espera e transfira entre turmas do mesmo curso. Matrículas ativas com taxa geram um rascunho no financeiro.
+
+Use **Agendar aulas** na turma para criar uma aula ou uma série semanal na agenda. Registre a chamada no dia da aula e marque presença, falta ou falta justificada. A presença é calculada sobre as aulas realizadas. Após atingir a frequência mínima, conclua a matrícula e baixe a declaração em PDF. A turma também exporta a relação de alunos e frequência em CSV.
+
+### Operações adicionadas nesta versão
+
+Além da cobrança automática por atendimento, do estoque e do vínculo entre cursos, turmas e alunos, a secretaria ganhou:
+
+| Financeiro | Estoque | Ensino |
+| --- | --- | --- |
+| Preço de referência por serviço | SKU único | Ementa |
+| Prazo de vencimento por atendimento | Categoria e localização | Carga horária |
+| Vínculo manual de cobranças antigas | Unidades fracionadas | Período, instrutor e local da turma |
+| Aprovação de rascunhos | Contagem física | Limite de vagas |
+| Descontos no lançamento | Bloqueio de saldo negativo | Lista de espera com posição |
+| Baixas parciais | Consumo ligado ao compromisso | Transferência de turma |
+| Meio e referência da baixa | Histórico por operador e motivo | Taxa de matrícula ligada ao financeiro |
+| Estorno com motivo | Estorno de movimento | Aulas na agenda |
+| Recibo timbrado em PDF | Lista de reposição por estoque mínimo | Séries semanais de aulas |
+| Fechamento mensal por data de baixa | Valoração pelo custo de referência | Chamada com falta justificada |
+| Extrato de caixa em CSV | Exportação do histórico do item em CSV | Frequência calculada por aluno |
+| Recebíveis por faixa de atraso | Exportação da reposição em CSV | Frequência mínima para conclusão |
+| Extrato por pessoa | Arquivamento de produtos | Declaração timbrada em PDF |
+| Consulta de cobranças no portal | | Exportação da lista de alunos em CSV |
+| Revisão de cancelamentos com baixas | | Filtro de turmas por curso |
+| Cancelamento e reabertura de lançamentos | | Arquivamento de cursos |

@@ -50,7 +50,7 @@ def slots(con, now=None, pid=None, ignore_id=None):
                           (rule['room'] and str(e.get('room') or '').strip().casefold()==rule['room'].casefold()) or
                           (pid and e.get('pid')==pid)) for e in events_by_day.get(daykey,()))
                 if start>now and start>=now+timedelta(hours=rule['notice']) and not busy:
-                    available.append(dict(rule=rule['id'],title=rule['title'],owner=rule['owner'],room=rule['room'],day=daykey,start=a,end=b))
+                    available.append(dict(rule=rule['id'],title=rule['title'],owner=rule['owner'],room=rule['room'],day=daykey,start=a,end=b,fee=rule.get('fee'),free=rule.get('free',False),due_days=rule.get('due_days',0)))
                 start=end
     return sorted(available,key=lambda s:(s['day'],s['start'],s['title']))
 
@@ -74,6 +74,12 @@ def configure(con,b,require):
     for k,lo,hi in [('duration',10,240),('horizon',1,60),('notice',0,168)]:
         rule[k]=int(b[k])
         require(lo<=rule[k]<=hi,'Confira a duração, antecedência e período de reservas.')
+    raw_fee=str(b.get('fee_cents','')).strip()
+    rule['fee']=int(raw_fee) if raw_fee else None
+    rule['free']=b.get('free') is True
+    rule['due_days']=int(b.get('due_days',0))
+    require((rule['fee'] is None or 0<=rule['fee']<=10**10) and 0<=rule['due_days']<=365,
+            'Confira o valor do serviço e o prazo de vencimento.')
     rule['days']=sorted(set(int(n) for n in b['days']))
     require(rule['days'] and all(0<=n<=6 for n in rule['days']),'Selecione os dias de atendimento.')
     for k in ('start','end'):
@@ -118,9 +124,13 @@ def book(con,pid,b,require,validate):
     else:
         slot=next((s for s in slots(con,pid=pid,ignore_id=previous['id'] if previous else None) if all(s[k]==b.get(k) for k in ('rule','day','start'))),None)
         require(slot,'O horário não está mais disponível. Selecione outro.',409)
+        if previous:
+            require(slot['rule']==previous['rule'],'Escolha outro horário do mesmo serviço.')
+            slot.update(fee=previous.get('fee'), free=previous.get('free',False),
+                        due_days=previous.get('due_days',0))
         item=dict(previous or {},**slot)
         item.pop('arrived_at',None)
         item.update(id=previous['id'] if previous else secrets.token_hex(16),pid=pid,status='Confirmado',source='Portal')
         validate(con,'agenda',item,previous)
     con.execute("INSERT OR REPLACE INTO records VALUES ('agenda',?,?)",(item['id'],json.dumps(item)))
-    return {k:item[k] for k in ('id','title','day','start','end','status')}
+    return item
