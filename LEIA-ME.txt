@@ -28,3 +28,15 @@ python3 iniciar.py --redefinir-senha seu@email.com
 ```
 
 A aplicação escuta apenas na interface local. Cada sessão expira em oito horas. Para rodar sem abrir o navegador, use --sem-navegador.
+
+## Instalar ou atualizar com geração de PDF
+
+Na pasta do projeto (macOS/Linux):
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python iniciar.py
+```
+
+No Windows use .venv\Scripts\python.exe nos dois últimos comandos. O PDF A4 retrato é gerado pelo servidor após validação de sessão. Inclui identificação, signo, análise, posições espirituais e relatos vinculados. O arquivo de calendário ICS usa horário local e contém o título e o local do compromisso.

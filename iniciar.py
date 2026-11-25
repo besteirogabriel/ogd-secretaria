@@ -16,7 +16,8 @@ from datetime import date, time as clock
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from signos import signo
+from urllib.parse import urlsplit, unquote
 
 ROOT = Path(__file__).resolve().parent
 DATA = Path(os.environ.get('OGD_DATA', ROOT / 'dados')).resolve()
@@ -164,6 +165,19 @@ class Handler(BaseHTTPRequestHandler):
                 token=cookies['ogd'].value if 'ogd' in cookies else ''
                 key=hashlib.sha256(token.encode()).hexdigest()
                 user=con.execute('SELECT u.id,name,email,role FROM users u JOIN sessions s ON uid=u.id WHERE token=? AND expires>? AND active=1',(key,int(time.time()))).fetchone()
+                if path.startswith('/ficha-pdf/') and not post:
+                    require(user,'Entre para acessar a ficha.',401)
+                    require('pessoas' in ROLES[user['role']],'Acesso restrito.',403)
+                    pid=unquote(path[len('/ficha-pdf/'):])
+                    row=con.execute("SELECT body FROM records WHERE kind='pessoas' AND id=?",(pid,)).fetchone()
+                    require(row,'Ficha inexistente.',404)
+                    person=json.loads(row[0])
+                    events=[json.loads(r[0]) for r in con.execute("SELECT body FROM records WHERE kind='agenda' AND json_extract(body,'$.pid')=?",(pid,))]
+                    try:
+                        from ficha_pdf import generate
+                    except ModuleNotFoundError:
+                        raise Problem(503,'Instale as dependências do PDF conforme o README.')
+                    return self.respond(200,generate(person,events,signo(person.get('nasc'))),'application/pdf')
                 result,cookie=self.route(con,path,post,body,user,key)
             self.respond(200,result,cookie=cookie)
         except Problem as exc:
